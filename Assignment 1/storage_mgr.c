@@ -139,21 +139,29 @@ RC readLastBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 /* writing blocks to a page file */
 
 RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=-1;
-	return return_code;
+	/* Write a page to disk using an absolute position. */
+	if (pageNum < 0 || pagenum > (*fhandle).totalNumPages){ return RC_WRITE_FAILED; } //error on invalid pagenum
+	if(access(fileName, W_OK) != -1){ //check write permissions on file
+		file = fopen((*fHandle).fileName, "r+") //if file writable, seek and write 
+		//seek file
+		//write file
+		//
+		fclose(file);
+	}
+	return RC_WRITE_FAILED; //could not open file
 }
 
 RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=-1;
-	return return_code;
+	/* Write a page to disk using either the current position. */
+	return -1;
 }
 
 RC appendEmptyBlock (SM_FileHandle *fHandle){
-	RC return_code=-1;
-	return return_code;
+	/* Increase the number of pages in the file by one. The new last page should be filled with zero bytes. */
+	return -1;
 }
 
 RC ensureCapacity (int numberOfPages, SM_FileHandle *fHandle){
-	RC return_code=-1;
-	return return_code;
+	/* If the file has less than numberOfPages pages then increase the size to numberOfPages */
+	return -1;
 }
