@@ -9,6 +9,8 @@
  // NOTE: 'RC' stands for 'Return Code' (see dberror.h)
  //PAGE SIZE is constant in dberror.h as 4KB
 
+FILE *file; //global file pointer
+
 /* manipulating page files */
 
 void initStorageManager (void){ // does nothing for now
@@ -17,9 +19,9 @@ void initStorageManager (void){ // does nothing for now
 
 RC createPageFile (char *fileName){
 	/* Create a new page file fileName. The initial file size should be one page. 
-	   This method should fill this single page with '\0' bytes. */
+	   This method should fill this single page with '\0' bytes. 
+	 */
 	RC return_code;
-	FILE *file;
 	if ((file = fopen(fileName, "w+"))){ //create/overwrite file for read+write and check if not exist
 		char *block = malloc(PAGE_SIZE); // create a 4KB block
 		memset(block, '\0', PAGE_SIZE);	//fill block with '\0' bytes
@@ -35,8 +37,12 @@ RC createPageFile (char *fileName){
 }
 
 RC openPageFile (char *fileName, SM_FileHandle *fHandle){
+	/* Opens an existing page file. Should return RC_FILE_NOT_FOUND if the file does not exist. 
+	   The second parameter is an existing file handle. If opening the file is successful, 
+	   then the fields of this file handle should be initialized with the information about the opened file. 
+	   For instance, you would have to read the total number of pages that are stored in the file from disk.
+	 */
 	RC return_code;
-	FILE *file;
 	if(access(fileName, R_OK|W_OK) != -1){ //access() in unistd.h for checking file exists with read+write permissions
 		file = fopen(fileName, "r+") //open file for read+write
 		/*calc fHandle struct attributes*/
@@ -54,18 +60,29 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle){
 
 	} else {
 		return_code = RC_FILE_NOT_FOUND; //error 1
-		
+
 	}
 	return return_code;
 }
 
-RC closePageFile (SM_FileHandle *fHandle){
+RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
 	RC return_code;
+	if(fclose(file) == 0){
+		return_code = RC_OK;
+	} else {
+		return_code = RC_FILE_NOT_FOUND; //error 1
+	}
+
 	return return_code;
 }
 
-RC destroyPageFile (char *fileName){
+RC destroyPageFile (char *fileName){ //delete a page file
 	RC return_code;
+	if(remove(fileName) == 0){ //remove() returns 0 if deleted successfully
+		return_code = RC_OK;
+	} else {
+		return_code = RC_FILE_NOT_FOUND; //error 1
+	}
 	return return_code;
 }
 
