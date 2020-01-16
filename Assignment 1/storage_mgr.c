@@ -30,7 +30,7 @@ RC createPageFile (char *fileName){
 	if ((file = fopen(fileName, "w+"))){ //create/overwrite file for read+write and check if not exist
 		char *block = malloc(PAGE_SIZE); // create a 4KB block
 		memset(block, '\0', PAGE_SIZE);	//fill block with '\0' bytes
-		fwrite(block, sizeof(char), PAGE_SIZE, file); //write to file (disk)
+		fwrite(block, 1, PAGE_SIZE, file); //write to file (disk)
 		free(block);
 		fclose(file);
 		return RC_OK; //code 0
@@ -99,7 +99,7 @@ RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
 		}
 		else {
-			(*fHandle).curPagePos = pageNum;
+			(*fHandle).curPagePos = pageNum; //update curPagePosition on read
 			return RC_OK;
 		}
 	}
@@ -140,14 +140,22 @@ RC readLastBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 
 RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* Write a page to disk using an absolute position. */
-	if (pageNum < 0 || pagenum > (*fhandle).totalNumPages){ return RC_WRITE_FAILED; } //error on invalid pagenum
-	if(access(fileName, W_OK) != -1){ //check write permissions on file
-		file = fopen((*fHandle).fileName, "r+") //if file writable, seek and write 
-		//seek file
-		//write file
-		//
+	if (pageNum < 0 || pageNum > (*fHandle).totalNumPages){ return RC_WRITE_FAILED; } //error on invalid pagenum
+	if(access((*fHandle).fileName, W_OK) != -1){ //check write permissions on file
+		//Using code from createPageFile()
+		file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
+		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
+		fwrite(memPage, 1, PAGE_SIZE, file); //write from memPage handle to file (disk)
+		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
+		int no_pages = file_length/PAGE_SIZE;
+		(*fHandle).totalNumPages = no_pages;
+		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
+		
 		fclose(file);
+		return RC_OK;
+
 	}
+
 	return RC_WRITE_FAILED; //could not open file
 }
 
