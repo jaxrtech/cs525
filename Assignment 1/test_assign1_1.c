@@ -75,7 +75,7 @@ testSinglePageContent(void)
   printf("created and opened file\n");
   
   // read first page into handle
-  TEST_CHECK(readFirstBlock (&fh, ph));
+  TEST_CHECK(readFirstBlock (&fh, ph)); 
   // the page should be empty (zero bytes)
   for (i=0; i < PAGE_SIZE; i++)
     ASSERT_TRUE((ph[i] == 0), "expected zero byte in first page of freshly initialized page");

@@ -22,4 +22,4 @@ clean : #rm command is not working on powershell for this version of make
 
 .PHONY : run
 run : 
-	./test_assign1
+	./test_assign1.exe

@@ -14,7 +14,7 @@
 		pointer: pointer to a FILE object that identifies the stream.
 		offset: number of bytes to offset from position
 		position: position from where offset is added. (SEEK_END = EOF, SEEK SET = START OF FILE, SEEK_CUR = current fpointer's position)
-
+*/
 FILE *file; //global file pointer
 
 /* manipulating page files */
@@ -89,13 +89,13 @@ RC destroyPageFile (char *fileName){ //delete a page file
 */
 
 RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
-	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. 
+	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. */
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
 	if ((*fHandle).totalNumPages < pageNum){ return RC_READ_NON_EXISTING_PAGE; }
-	int file_length;
 	else {
 		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
-		if ((file_length = fread(memPage, 1, PAGE_SIZE, file)) != PAGE_SIZE){ // read content from mempage page handle to FILE *file
+		int file_length;
+		if ((file_length = fread(memPage, 1, PAGE_SIZE, file)) != PAGE_SIZE){ // read content from memPage page handle to FILE *file
 			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
 		}
 		else {
@@ -105,54 +105,55 @@ RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	}
 }
 
-int getBlockPos (SM_FileHandle *fHandle){
-	RC return_code=0;
+int getBlockPos (SM_FileHandle *fHandle){ //return current page position in file
+	return (*fHandle).curPagePos;
+}
+
+RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ //simply reads the first block
+	RC return_code = readBlock(0,fHandle, memPage); 
 	return return_code;
 }
 
-RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
-	return return_code;
-}
-
-RC readPreviousBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
+RC readPreviousBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ 
+	int prev_block = (*fHandle).curPagePos-1; //get previous block location
+	if(prev_block < 0) {return RC_READ_NON_EXISTING_PAGE;} // can't read nonexistent block
+	RC return_code = readBlock(prev_block, fHandle, memPage); //try and read the block or return error above if block not pf size PAGE_SIZE
 	return return_code;
 }
 
 RC readCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
-	return return_code;
+	int cur_block = (*fHandle).curPagePos;
+	return readBlock(cur_block, fHandle, memPage);
 }
 
 RC readNextBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
-	return return_code;
+	int next_block = (*fHandle).curPagePos+1;
+	return readBlock(next_block, fHandle, memPage);
 }
 
 RC readLastBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
-	return return_code;
+	int last_block = (*fHandle).totalNumPages; //get position of last block
+	return readBlock(last_block, fHandle, memPage);
 }
 
 /* writing blocks to a page file */
 
 RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
+	RC return_code=-1;
 	return return_code;
 }
 
 RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
+	RC return_code=-1;
 	return return_code;
 }
 
 RC appendEmptyBlock (SM_FileHandle *fHandle){
-	RC return_code=0;
+	RC return_code=-1;
 	return return_code;
 }
 
 RC ensureCapacity (int numberOfPages, SM_FileHandle *fHandle){
-	RC return_code=0;
+	RC return_code=-1;
 	return return_code;
 }
