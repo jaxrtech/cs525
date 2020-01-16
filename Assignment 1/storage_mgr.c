@@ -6,8 +6,14 @@
 #include "dberror.h"
 #include "storage_mgr.h"
 
+/* NOTES */
  // NOTE: 'RC' stands for 'Return Code' (see dberror.h)
- //PAGE SIZE is constant in dberror.h as 4KB
+ // PAGE SIZE is constant in dberror.h as 4KB
+ /* for fseek(): (ZERO ON SUCCESS)
+ int fseek(FILE *pointer, long int offset, int position)
+		pointer: pointer to a FILE object that identifies the stream.
+		offset: number of bytes to offset from position
+		position: position from where offset is added. (SEEK_END = EOF, SEEK SET = START OF FILE, SEEK_CUR = current fpointer's position)
 
 FILE *file; //global file pointer
 
@@ -66,7 +72,6 @@ RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
 	} else {
 		return RC_FILE_NOT_FOUND; //error 1
 	}
-
 }
 
 RC destroyPageFile (char *fileName){ //delete a page file
@@ -78,10 +83,26 @@ RC destroyPageFile (char *fileName){ //delete a page file
 }
 
 /* reading blocks from disc */
+	/* There are two types of read and write methods that have to be implemented: 
+	     1) Methods with absolute addressing (e.g., readBlock) 
+	     2) Methods that address relative to the current page of a file (e.g., readNextBlock).
+*/
 
 RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code=0;
-	return return_code;
+	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. 
+	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
+	if ((*fHandle).totalNumPages < pageNum){ return RC_READ_NON_EXISTING_PAGE; }
+	int file_length;
+	else {
+		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
+		if ((file_length = fread(memPage, 1, PAGE_SIZE, file)) != PAGE_SIZE){ // read content from mempage page handle to FILE *file
+			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
+		}
+		else {
+			(*fHandle).curPagePos = pageNum;
+			return RC_OK;
+		}
+	}
 }
 
 int getBlockPos (SM_FileHandle *fHandle){

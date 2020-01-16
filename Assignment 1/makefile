@@ -18,7 +18,7 @@ test_assign1 : $(OBJECTS)
 
 .PHONY : clean
 clean : #rm command is not working on powershell for this version of make
-	@del *.exe *.o # suppress output
+	@del *.exe *.o *.bin # suppress output
 
 .PHONY : run
 run : 
