@@ -6,14 +6,14 @@
 /************************************************************
  *                    handle data structures                *
  ************************************************************/
-typedef struct SM_FileHandle {
-	char *fileName;
-	int totalNumPages;
-	int curPagePos;
-	void *mgmtInfo;
+typedef struct SM_FileHandle { //represents open page file
+	char *fileName;		//file name
+	int totalNumPages;	//total no. pages in file
+	int curPagePos;		//current read position since beginning of file
+	void *mgmtInfo;		//POSIX file descriptor
 } SM_FileHandle;
 
-typedef char* SM_PageHandle;
+typedef char* SM_PageHandle; //pointer to memory storing data of a page 
 
 /************************************************************
  *                    interface                             *

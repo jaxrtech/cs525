@@ -95,6 +95,7 @@ testSinglePageContent(void)
   // read back the page containing the string and check that it is correct
   TEST_CHECK(readFirstBlock (&fh, ph));
   for (i=0; i < PAGE_SIZE; i++)
+    printf("%c | %c\n", ph[i], (i%10)+'0');
     ASSERT_TRUE((ph[i] == (i % 10) + '0'), "character in page read from disk is the one we expected.");
   printf("reading first block\n");
 

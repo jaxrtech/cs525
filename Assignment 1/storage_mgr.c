@@ -91,7 +91,7 @@ RC destroyPageFile (char *fileName){ //delete a page file
 RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. */
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
-	if ((*fHandle).totalNumPages < pageNum){ return RC_READ_NON_EXISTING_PAGE; }
+	if ((*fHandle).totalNumPages < pageNum){ return RC_READ_NON_EXISTING_PAGE+9; }
 	else {
 		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
 		int file_length;
@@ -110,7 +110,7 @@ int getBlockPos (SM_FileHandle *fHandle){ //return current page position in file
 }
 
 RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ //simply reads the first block
-	RC return_code = readBlock(0,fHandle, memPage); 
+	RC return_code = readBlock(0,fHandle, memPage); //first block position is always relatively zero
 	return return_code;
 }
 
