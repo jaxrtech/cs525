@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <errno.h>
+
 #include "dberror.h"
 #include "storage_mgr.h"
 
@@ -16,7 +18,7 @@
 		position: position from where offset is added. (SEEK_END = EOF, SEEK SET = START OF FILE, SEEK_CUR = current fpointer's position)
 */
 FILE *file; //global file pointer
-
+extern int errno;
 /* manipulating page files */
 
 void initStorageManager (void){ // does nothing for now
@@ -77,12 +79,15 @@ RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
 }
 
 RC destroyPageFile (char *fileName){ //delete a page file
-	if (file != NULL){ fclose(file); } //ensure file closed before deleting 
-	if (remove(fileName) == 0){ //remove() returns 0 if deleted successfully
-		return RC_OK;
-	} else {
-		return RC_FILE_NOT_FOUND; //error 1
-	}
+	if ((file = fopen(fileName, "r")) != NULL){ fclose(file); } //ensure file closed before deleting 
+	unlink(fileName);
+	RC code = remove(fileName);
+	if (code != 0){ 
+		fprintf(stderr, "ERROR: %d\n", errno);
+		printf("%s\n", strerror(errno));
+		return RC_FILE_NOT_FOUND; 
+	} //error 1
+	return RC_OK;
 }
 
 /* reading blocks from disc */
@@ -160,7 +165,7 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 }
 
 RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	/* Write a page to disk using either the current position. */
+	/* Write a page to disk using the current position. */
 	return -1;
 }
 
