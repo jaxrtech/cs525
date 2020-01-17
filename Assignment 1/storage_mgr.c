@@ -48,7 +48,7 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle){
 	if(access(fileName, R_OK|W_OK) != -1){ //access() in unistd.h for checking file exists with read+write permissions
 		file = fopen(fileName, "r+"); //open file for read+write
 		/*calc fHandle struct attributes*/
-		fseek(file, 0L, SEEK_END); //point to EOF
+		fseek(file, 0, SEEK_END); //point to EOF
 		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
 		int no_pages = file_length/PAGE_SIZE;
 		rewind(file); //point back to file beginning
@@ -67,7 +67,9 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle){
 }
 
 RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
-	if(fclose(file) == 0){
+	if (file == NULL){ return RC_FILE_NOT_FOUND; } //can't close an unopened file
+	if (fclose(file) == 0){
+		file = NULL; //safe way to ensure files are closed
 		return RC_OK;
 	} else {
 		return RC_FILE_NOT_FOUND; //error 1
@@ -75,7 +77,8 @@ RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
 }
 
 RC destroyPageFile (char *fileName){ //delete a page file
-	if(remove(fileName) == 0){ //remove() returns 0 if deleted successfully
+	if (file != NULL){ fclose(file); } //ensure file closed before deleting 
+	if (remove(fileName) == 0){ //remove() returns 0 if deleted successfully
 		return RC_OK;
 	} else {
 		return RC_FILE_NOT_FOUND; //error 1
@@ -91,17 +94,17 @@ RC destroyPageFile (char *fileName){ //delete a page file
 RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. */
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
-	if ((*fHandle).totalNumPages < pageNum){ return RC_READ_NON_EXISTING_PAGE+9; }
+	if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
 	else {
 		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
 		int file_length;
 		if ((file_length = fread(memPage, 1, PAGE_SIZE, file)) != PAGE_SIZE){ // read content from memPage page handle to FILE *file
+			printf("file length: %d\n", file_length);
+			printf("AFTER READ: %.10s\n", memPage);
 			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
 		}
-		else {
-			(*fHandle).curPagePos = pageNum; //update curPagePosition on read
-			return RC_OK;
-		}
+		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
+		return RC_OK;
 	}
 }
 
@@ -110,15 +113,13 @@ int getBlockPos (SM_FileHandle *fHandle){ //return current page position in file
 }
 
 RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ //simply reads the first block
-	RC return_code = readBlock(0,fHandle, memPage); //first block position is always relatively zero
-	return return_code;
+	return readBlock(0,fHandle, memPage); //first block position is always relatively zero
 }
 
 RC readPreviousBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ 
 	int prev_block = (*fHandle).curPagePos-1; //get previous block location
 	if(prev_block < 0) {return RC_READ_NON_EXISTING_PAGE;} // can't read nonexistent block
-	RC return_code = readBlock(prev_block, fHandle, memPage); //try and read the block or return error above if block not pf size PAGE_SIZE
-	return return_code;
+	return readBlock(prev_block, fHandle, memPage); //try and read the block or return error above if block not pf size PAGE_SIZE
 }
 
 RC readCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
@@ -145,7 +146,8 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 		//Using code from createPageFile()
 		file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
 		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
-		fwrite(memPage, 1, PAGE_SIZE, file); //write from memPage handle to file (disk)
+		printf("writing to file: %.10s\n", memPage);
+		fwrite(memPage, 1, strlen(memPage), file); //write from memPage handle to file (disk)
 		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
 		int no_pages = file_length/PAGE_SIZE;
 		(*fHandle).totalNumPages = no_pages;
