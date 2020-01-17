@@ -96,11 +96,11 @@ RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
 	if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
 	else {
-		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
-		int file_length;
-		if ((file_length = fread(memPage, 1, PAGE_SIZE, file)) != PAGE_SIZE){ // read content from memPage page handle to FILE *file
-			printf("file length: %d\n", file_length);
-			printf("AFTER READ: %.10s\n", memPage);
+		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
+		int file_length = fread(memPage, 1, PAGE_SIZE, file);
+		printf("file length: %d\n", file_length);
+		printf("AFTER READ: %.3s\n", memPage);
+		if (file_length == PAGE_SIZE){ // read content from memPage page handle to FILE *file
 			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
 		}
 		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
@@ -113,7 +113,7 @@ int getBlockPos (SM_FileHandle *fHandle){ //return current page position in file
 }
 
 RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ //simply reads the first block
-	return readBlock(0,fHandle, memPage); //first block position is always relatively zero
+	return readBlock(0, fHandle, memPage); //first block position is always relatively zero
 }
 
 RC readPreviousBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ 
@@ -145,8 +145,7 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	if(access((*fHandle).fileName, W_OK) != -1){ //check write permissions on file
 		//Using code from createPageFile()
 		file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
-		fseek(file, pageNum*PAGE_SIZE, SEEK_SET); //seek to start of file and move to start of pageNum-th page in block
-		printf("writing to file: %.10s\n", memPage);
+		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
 		fwrite(memPage, 1, strlen(memPage), file); //write from memPage handle to file (disk)
 		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
 		int no_pages = file_length/PAGE_SIZE;
