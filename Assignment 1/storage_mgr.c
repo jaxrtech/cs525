@@ -96,11 +96,10 @@ RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
 	if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
 	else {
+		fopen((*fHandle).fileName, "r+"); //open file if closed
 		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
 		int file_length = fread(memPage, 1, PAGE_SIZE, file);
-		printf("file length: %d\n", file_length);
-		printf("AFTER READ: %.3s\n", memPage);
-		if (file_length == PAGE_SIZE){ // read content from memPage page handle to FILE *file
+		if (file_length != PAGE_SIZE){ // read content from memPage page handle to FILE *file
 			return RC_READ_NON_EXISTING_PAGE; // returns error if block not equal to PAGE_SIZE
 		}
 		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
