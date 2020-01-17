@@ -73,7 +73,6 @@ testSinglePageContent(void)
   TEST_CHECK(createPageFile (TESTPF));
   TEST_CHECK(openPageFile (TESTPF, &fh));
   printf("created and opened file\n");
-
   // read first page into handle
   TEST_CHECK(readFirstBlock (&fh, ph));
   // the page should be empty (zero bytes)
@@ -93,6 +92,8 @@ testSinglePageContent(void)
   for (i=0; i < PAGE_SIZE; i++)
     ASSERT_TRUE((ph[i] == (i % 10) + '0'), "character in page read from disk is the one we expected.");
   printf("reading first block\n");
+
+//TEST_CHECK(closePageFile (&fh));
 
   // destroy new page file
   TEST_CHECK(destroyPageFile(TESTPF));  

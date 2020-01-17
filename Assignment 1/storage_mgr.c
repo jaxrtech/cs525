@@ -79,8 +79,8 @@ RC closePageFile (SM_FileHandle *fHandle){ //self-explanatory
 }
 
 RC destroyPageFile (char *fileName){ //delete a page file
-	if ((file = fopen(fileName, "r")) != NULL){ fclose(file); } //ensure file closed before deleting 
-	unlink(fileName);
+	if (file != NULL){ fclose(file); file = NULL; } //ensure file closed before deleting 
+	//unlink(fileName);
 	RC code = remove(fileName);
 	if (code != 0){ 
 		fprintf(stderr, "ERROR: %d\n", errno);
@@ -101,7 +101,7 @@ RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
 	if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
 	else {
-		fopen((*fHandle).fileName, "r+"); //open file if closed
+		//if (file == NULL){ file = fopen((*fHandle).fileName, "r+"); } //open file if closed
 		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
 		int file_length = fread(memPage, 1, PAGE_SIZE, file);
 		if (file_length != PAGE_SIZE){ // read content from memPage page handle to FILE *file
@@ -148,7 +148,7 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	if (pageNum < 0 || pageNum > (*fHandle).totalNumPages){ return RC_WRITE_FAILED; } //error on invalid pagenum
 	if(access((*fHandle).fileName, W_OK) != -1){ //check write permissions on file
 		//Using code from createPageFile()
-		file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
+		//file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
 		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
 		fwrite(memPage, 1, strlen(memPage), file); //write from memPage handle to file (disk)
 		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
@@ -156,7 +156,7 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 		(*fHandle).totalNumPages = no_pages;
 		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
 		
-		fclose(file);
+		//fclose(file);
 		return RC_OK;
 
 	}
