@@ -3,8 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <errno.h>
-
 #include "dberror.h"
 #include "storage_mgr.h"
 
@@ -18,7 +16,6 @@
 		position: position from where offset is added. (SEEK_END = EOF, SEEK SET = START OF FILE, SEEK_CUR = current fpointer's position)
 */
 FILE *file; //global file pointer
-extern int errno;
 /* manipulating page files */
 
 void initStorageManager (void){ // does nothing for now
@@ -166,15 +163,35 @@ RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 
 RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* Write a page to disk using the current position. */
-	return -1;
+	RC return_code = writeBlock((*fHandle).curPagePos, fHandle, memPage); //try to write block
+	if (return_code == RC_OK){ ++((*fHandle).totalNumPages); } //increment if no error
+	return return_code;	
 }
 
 RC appendEmptyBlock (SM_FileHandle *fHandle){
 	/* Increase the number of pages in the file by one. The new last page should be filled with zero bytes. */
-	return -1;
+	int numberOfPages = (*fHandle).totalNumPages;
+	fseek(file, PAGE_SIZE*numberOfPages, SEEK_SET);
+
+	char *block = malloc(PAGE_SIZE); // create a 4KB block
+	memset(block, '\0', PAGE_SIZE);	//fill block with '\0' bytes
+	fwrite(block, 1, PAGE_SIZE, file); //write to file (disk)
+	free(block);
+
+	++((*fHandle).totalNumPages);
+	return RC_OK;
 }
 
 RC ensureCapacity (int numberOfPages, SM_FileHandle *fHandle){
 	/* If the file has less than numberOfPages pages then increase the size to numberOfPages */
-	return -1;
+	int numpages = (*fHandle).totalNumPages;
+	fseek(file, PAGE_SIZE*numpages, SEEK_SET);
+	char *block = malloc(PAGE_SIZE); // create a 4KB block
+	memset(block, '\0', PAGE_SIZE);	//fill block with '\0' bytes
+	for (int i = 0; i < numberOfPages; ++i){
+		fwrite(block, 1, PAGE_SIZE, file); //write to file (disk)
+		++((*fHandle).totalNumPages);
+	}
+	free(block);
+	return RC_OK;
 }
