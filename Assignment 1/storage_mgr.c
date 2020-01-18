@@ -38,8 +38,9 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle){
 	   then the fields of this file handle should be initialized with the information about the opened file. 
 	   For instance, you would have to read the total number of pages that are stored in the file from disk.
 	 */
-	if(access(fileName, R_OK|W_OK) != -1){ //access() in unistd.h for checking file exists with read+write permissions
-		file = fopen(fileName, "r+"); //open file for read+write
+	if(access(fileName, R_OK|W_OK) == -1){ //access() in unistd.h for checking file exists with read+write permissions
+		return RC_FILE_PERMISSIONS_ERROR;
+	} else if ((file = fopen(fileName, "r+")) != NULL){ //open file for read+write
 		/*calc fHandle struct attributes*/
 		fseek(file, 0, SEEK_END); //point to EOF
 		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
@@ -55,7 +56,6 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle){
 
 	} else {
 		return RC_FILE_NOT_FOUND; //error 1
-
 	}
 }
 
@@ -74,9 +74,9 @@ RC destroyPageFile (char *fileName){ //delete a page file
 	//unlink(fileName);
 	RC code = remove(fileName);
 	if (code != 0){ 
-		fprintf(stderr, "ERROR: %d\n", errno);
-		printf("%s\n", strerror(errno));
-		return RC_FILE_NOT_FOUND; 
+		//fprintf(stderr, "ERROR: %d\n", errno);
+		//printf("%s\n", strerror(errno));
+		return RC_FILE_DESTROY_ERROR; 
 	} //error 1
 	return RC_OK;
 }
@@ -90,7 +90,8 @@ RC destroyPageFile (char *fileName){ //delete a page file
 RC readBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/*	The method reads the pageNum-th block from a file and stores its content in the memory pointed to by the memPage page handle. */
 	/* If the file has less than pageNum pages, the method should return RC_READ_NON_EXISTING_PAGE. */
-	if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
+	if (fHandle == NULL) { return RC_FILE_HANDLE_NOT_INIT; }
+	else if ((*fHandle).totalNumPages < pageNum || pageNum < 0){ return RC_READ_NON_EXISTING_PAGE; }
 	else {
 		//if (file == NULL){ file = fopen((*fHandle).fileName, "r+"); } //open file if closed
 		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
@@ -136,34 +137,39 @@ RC readLastBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 
 RC writeBlock (int pageNum, SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* Write a page to disk using an absolute position. */
+	if (fHandle == NULL) { return RC_FILE_HANDLE_NOT_INIT; }
+	if(access((*fHandle).fileName, W_OK) == -1){ return RC_FILE_PERMISSIONS_ERROR; }//check write permissions on file
 	if (pageNum < 0 || pageNum > (*fHandle).totalNumPages){ return RC_WRITE_FAILED; } //error on invalid pagenum
-	if(access((*fHandle).fileName, W_OK) != -1){ //check write permissions on file
-		//Using code from createPageFile()
-		//file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
-		if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
-		fwrite(memPage, 1, strlen(memPage), file); //write from memPage handle to file (disk)
-		int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
-		int no_pages = file_length/PAGE_SIZE;
-		(*fHandle).totalNumPages = no_pages;
-		(*fHandle).curPagePos = pageNum; //update curPagePosition on read
-		
-		//fclose(file);
-		return RC_OK;
-
-	}
-
-	return RC_WRITE_FAILED; //could not open file
+	if (fseek(file, pageNum*PAGE_SIZE, SEEK_SET) != 0) { return RC_FILE_SEEK_ERROR; } //seek to start of file and move to start of pageNum-th page in block
+	//Using code from createPageFile()
+	//file = fopen((*fHandle).fileName, "r+"); //if file writable, seek and write 
+	fwrite(memPage, 1, strlen(memPage), file); //write from memPage handle to file (disk)
+	int file_length = ftell(file)+1; //get file size (EOF_point+1 - f_begin_point)
+	int no_pages = file_length/PAGE_SIZE;
+	(*fHandle).totalNumPages = no_pages;
+	(*fHandle).curPagePos = pageNum; //update curPagePosition on read
+	
+	return RC_OK;
 }
 
 RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 	/* Write a page to disk using the current position. */
 	RC return_code = writeBlock((*fHandle).curPagePos, fHandle, memPage); //try to write block
-	if (return_code == RC_OK){ ++((*fHandle).totalNumPages); } //increment if no error
+	//if (return_code == RC_OK){ ++((*fHandle).totalNumPages); } //increment if no error
+	return return_code;	
+}
+
+RC writeNewBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
+	RC return_code = appendEmptyBlock(fHandle);
+	if (return_code != RC_OK){ return return_code; }
+	return_code = writeBlock((*fHandle).totalNumPages, fHandle, memPage);
 	return return_code;	
 }
 
 RC appendEmptyBlock (SM_FileHandle *fHandle){
 	/* Increase the number of pages in the file by one. The new last page should be filled with zero bytes. */
+	if (fHandle == NULL) { return RC_FILE_HANDLE_NOT_INIT; }
+	if(access((*fHandle).fileName, W_OK) == -1){ return RC_FILE_PERMISSIONS_ERROR; }//check write permissions on file
 	int numberOfPages = (*fHandle).totalNumPages;
 	fseek(file, PAGE_SIZE*numberOfPages, SEEK_SET);
 
@@ -178,6 +184,8 @@ RC appendEmptyBlock (SM_FileHandle *fHandle){
 
 RC ensureCapacity (int numberOfPages, SM_FileHandle *fHandle){
 	/* If the file has less than numberOfPages pages then increase the size to numberOfPages */
+	if (fHandle == NULL) { return RC_FILE_HANDLE_NOT_INIT; }
+	if(access((*fHandle).fileName, W_OK) == -1){ return RC_FILE_PERMISSIONS_ERROR; }//check write permissions on file
 	int numpages = (*fHandle).totalNumPages;
 	fseek(file, PAGE_SIZE*numpages, SEEK_SET);
 	char *block = malloc(PAGE_SIZE); // create a 4KB block
