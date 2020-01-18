@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall
-
+RM = del #uncomment this if on windows
 default : test_assign1
 
 HEADERS = test_helper.h storage_mgr.h dberror.h
@@ -18,7 +18,7 @@ test_assign1 : $(OBJECTS)
 
 .PHONY : clean
 clean : #rm command is not working on powershell for this version of make
-	$(RM) *.exe *.o *.bin *.txt # suppress output and delete non-code files
+	$(RM) *.exe *.o *.bin # suppress output and delete non-code files
 
 .PHONY : run
 run : 
