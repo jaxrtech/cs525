@@ -6,19 +6,13 @@
 #include "dberror.h"
 #include "storage_mgr.h"
 
-/* NOTES */
- // NOTE: 'RC' stands for 'Return Code' (see dberror.h)
- // PAGE SIZE is constant in dberror.h as 4KB
- /* for fseek(): (ZERO ON SUCCESS)
- int fseek(FILE *pointer, long int offset, int position)
-		pointer: pointer to a FILE object that identifies the stream.
-		offset: number of bytes to offset from position
-		position: position from where offset is added. (SEEK_END = EOF, SEEK SET = START OF FILE, SEEK_CUR = current fpointer's position)
-*/
 FILE *file; //global file pointer
+
 /* manipulating page files */
 
 void initStorageManager (void){ // does nothing for now
+	printf("ASSIGNMENT 1 (Storage Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n");
+	file = NULL;
 	return;
 }
 

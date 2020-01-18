@@ -28,6 +28,8 @@ main (void)
   testCreateOpenClose();
   testSinglePageContent();
 
+  testAll();  //EXTRA TESTING
+
   return 0;
 }
 
@@ -93,10 +95,45 @@ testSinglePageContent(void)
     ASSERT_TRUE((ph[i] == (i % 10) + '0'), "character in page read from disk is the one we expected.");
   printf("reading first block\n");
 
-  //TEST_CHECK(closePageFile (&fh));
-
   // destroy new page file
   TEST_CHECK(destroyPageFile(TESTPF));  
   
+  TEST_DONE();
+}
+
+
+void testAll(){
+
+  SM_FileHandle fh;
+  SM_PageHandle ph;
+
+  int i;
+  testName = "test multi-page content";
+  ph = (SM_PageHandle) malloc(PAGE_SIZE);
+
+  //expect error if reading or writing unopened pagefile
+  TEST_CHECK(writeBlock (0, &fh, ph)); 
+  TEST_CHECK(readBlock (&fh, ph));
+
+  /*write three blocks and test if the values are correct*/
+  TEST_CHECK(createPageFile (TESTPF));
+
+  TEST_CHECK(getBlockPos (&fh, ph));        //ensure starting at zero pages
+  
+  TEST_CHECK(openPageFile (TESTPF, &fh));
+  TEST_CHECK(writeBlock (0, &fh, ph)); 
+  TEST_CHECK(readFirstBlock (&fh, ph));
+  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 1 page
+
+  TEST_CHECK(appendEmptyBlock (&fh, ph));
+  TEST_CHECK(readBlock (&fh, ph));
+  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 2 pages
+
+  TEST_CHECK(writeCurrentBlock (&fh, ph));  
+  TEST_CHECK(readBlock (&fh, ph));
+  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 3 pages
+
+  TEST_CHECK(ensureCapacity (&fh, ph));
+
   TEST_DONE();
 }
