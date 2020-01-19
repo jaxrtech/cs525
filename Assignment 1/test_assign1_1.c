@@ -96,6 +96,7 @@ testSinglePageContent(void)
     ASSERT_TRUE((ph[i] == (i % 10) + '0'), "character in page read from disk is the one we expected.");
   printf("reading first block\n");
 
+  free(ph);
   // destroy new page file
   TEST_CHECK(destroyPageFile(TESTPF));  
   
@@ -105,36 +106,62 @@ testSinglePageContent(void)
 
 void testAll(){
 
-/*
+
   SM_FileHandle fh;
   SM_PageHandle ph;
 
   int i;
   testName = "test multi-page content";
   ph = (SM_PageHandle) malloc(PAGE_SIZE);
+  memset(ph, '.', PAGE_SIZE); 
   //expect error if reading or writing unopened pagefile
-  TEST_CHECK(writeBlock (0, &fh, ph)); 
-  TEST_CHECK(readBlock (&fh, ph));
+  ASSERT_TRUE((writeBlock(0, &fh, ph) != RC_OK), "cannot write to unopened pagefile"); 
+
+  ASSERT_TRUE((readBlock(0, &fh, ph) != RC_OK), "cannot read unopened pagefile");
 
   //write three blocks and test if the values are correct
-  TEST_CHECK(createPageFile (TESTPF));
+  TEST_CHECK(createPageFile(TESTPF));
+  TEST_CHECK(openPageFile(TESTPF, &fh));
+  ASSERT_TRUE((getBlockPos(&fh) == 0), "new pagefile has zero blocks");        //ensure starting at zero pages
+  printf("created and opened pagefile\n");
 
-  TEST_CHECK(getBlockPos (&fh, ph));        //ensure starting at zero pages
+  TEST_CHECK(writeBlock(0, &fh, ph)); 
+  TEST_CHECK(readFirstBlock(&fh, ph));
+  for (i=0; i < PAGE_SIZE; i++)
+    ASSERT_TRUE((ph[i] == '.'), "character in page read from disk is the one we expected.");
+  ASSERT_TRUE((getBlockPos(&fh) == 0), "current block position correct");        //ensure written 1 page
+  printf("wrote and read 1st block\n");
+
+  TEST_CHECK(appendEmptyBlock(&fh));
+  TEST_CHECK(readBlock(1, &fh, ph));
+  for (i=0; i < PAGE_SIZE; i++)
+    ASSERT_TRUE((ph[i] == '\0'), "character in page read from disk is the one we expected.");
+  ASSERT_TRUE((getBlockPos(&fh) == 1), "current block position correct");        //ensure written 1+NULL pages
+  printf("wrote a NULL block\n");
+
+  memset(ph, 'k', PAGE_SIZE); 
+  TEST_CHECK(writeCurrentBlock(&fh, ph));  //rewrite null block to 'kkkkkk...'
+  TEST_CHECK(readLastBlock(&fh, ph));
+  for (i=0; i < PAGE_SIZE; i++)
+    ASSERT_TRUE((ph[i] == 'k'), "character in page read from disk is the one we expected.");
+  ASSERT_TRUE((getBlockPos(&fh) == 1), "current block position correct");        //ensure written 2 pages
+  printf("over-wrote NULL (2nd) block correctly\n");
+
+  memset(ph, '-', PAGE_SIZE); 
+  TEST_CHECK(writeNewBlock(&fh, ph));
+  TEST_CHECK(readLastBlock(&fh, ph));
+  for (i=0; i < PAGE_SIZE; i++)
+    ASSERT_TRUE((ph[i] == '-'), "character in page read from disk is the one we expected.");
+  ASSERT_TRUE((getBlockPos(&fh) == 2), "current block position correct");        //ensure written 3 pages
+  printf("wrote 3rd block\n");
+  TEST_CHECK(ensureCapacity(5, &fh));
+  ASSERT_TRUE((getBlockPos(&fh) == 2), "current block position correct");        //ensure written 3 pages
+  ASSERT_TRUE((getTotalNumBlocks(&fh) == 5), "total blocks in pagefile correct");//ensure 5 writable pages
+  printf("ensured pagefile has 5 blocks\n");
   
-  TEST_CHECK(openPageFile (TESTPF, &fh));
-  TEST_CHECK(writeBlock (0, &fh, ph)); 
-  TEST_CHECK(readFirstBlock (&fh, ph));
-  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 1 page
+  closePageFile(&fh);
+  destroyPageFile(TESTPF);  
 
-  TEST_CHECK(appendEmptyBlock (&fh, ph));
-  TEST_CHECK(readBlock (&fh, ph));
-  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 2 pages
-
-  TEST_CHECK(writeCurrentBlock (&fh, ph));  
-  TEST_CHECK(readBlock (&fh, ph));
-  TEST_CHECK(getBlockPos (&fh, ph));        //ensure written 3 pages
-
-  TEST_CHECK(ensureCapacity (&fh, ph));
-*/
+  free(ph);
   TEST_DONE();
 }

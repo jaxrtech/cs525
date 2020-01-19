@@ -42,6 +42,9 @@ Implementation Details:
 	getBlockPos
 		- simply returns the current page position (last page read) from the fileHandle's <curPagePos> attribute.
 
+	getTotalNumBlocks
+		- simply returns the total number of writable pages from the fileHandle's <totalNumPages> attribute.
+
 	readBlock 
 		- will read a block when given an *absolute* position specified as <pageNum> (error checking comes before reading the block)
 		- if openPageFile() has not been called, it returns RC_FILE_HANDLE_NOT_INIT

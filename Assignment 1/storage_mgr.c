@@ -108,6 +108,10 @@ int getBlockPos (SM_FileHandle *fHandle){ //return current page position in file
 	return (*fHandle).curPagePos;
 }
 
+int getTotalNumBlocks(SM_FileHandle *fHandle){ //return total number of writable blocks
+	return (*fHandle).totalNumPages;
+}
+
 RC readFirstBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){ //simply reads the first block
 	return readBlock(0, fHandle, memPage); //first block position is always relatively zero
 }
@@ -129,7 +133,7 @@ RC readNextBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 }
 
 RC readLastBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	int last_block = (*fHandle).totalNumPages; //get position of last block
+	int last_block = (*fHandle).totalNumPages-1; //get position of last block
 	return readBlock(last_block, fHandle, memPage);
 }
 
@@ -160,10 +164,15 @@ RC writeCurrentBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
 }
 
 RC writeNewBlock (SM_FileHandle *fHandle, SM_PageHandle memPage){
-	RC return_code = appendEmptyBlock(fHandle);
-	if (return_code != RC_OK){ return return_code; }
-	return_code = writeBlock((*fHandle).totalNumPages, fHandle, memPage);
-	return return_code;	
+	/* Increase the number of pages in the file by one and fill it with user-specified bytes. */
+	if (fHandle == NULL) { return RC_FILE_HANDLE_NOT_INIT; }
+	if(access((*fHandle).fileName, W_OK) == -1){ return RC_FILE_PERMISSIONS_ERROR; }//check write permissions on file
+	int numberOfPages = (*fHandle).totalNumPages;
+	fseek(file, PAGE_SIZE*numberOfPages, SEEK_SET);
+	fwrite(memPage, 1, PAGE_SIZE, file); //write to file (disk)
+
+	((*fHandle).totalNumPages)+=1;
+	return RC_OK;
 }
 
 RC appendEmptyBlock (SM_FileHandle *fHandle){
@@ -178,7 +187,7 @@ RC appendEmptyBlock (SM_FileHandle *fHandle){
 	fwrite(block, 1, PAGE_SIZE, file); //write to file (disk)
 	free(block);
 
-	++((*fHandle).totalNumPages);
+	((*fHandle).totalNumPages)+=1;
 	return RC_OK;
 }
 
@@ -190,7 +199,7 @@ RC ensureCapacity (int numberOfPages, SM_FileHandle *fHandle){
 	fseek(file, PAGE_SIZE*numpages, SEEK_SET);
 	char *block = malloc(PAGE_SIZE); // create a 4KB block
 	memset(block, '\0', PAGE_SIZE);	//fill block with '\0' bytes
-	for (int i = 0; i < numberOfPages; ++i){
+	for (int i = numpages; i < numberOfPages; ++i){
 		fwrite(block, 1, PAGE_SIZE, file); //write to file (disk)
 		++((*fHandle).totalNumPages);
 	}
