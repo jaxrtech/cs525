@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "storage_mgr.h"
 #include "dberror.h"
@@ -44,6 +43,8 @@ testCreateOpenClose(void)
 
   testName = "test create open and close methods";
 
+  // Ensure that we're starting from scratch
+  destroyPageFile (TESTPF);
   TEST_CHECK(createPageFile (TESTPF));
   
   TEST_CHECK(openPageFile (TESTPF, &fh));
@@ -76,8 +77,13 @@ testSinglePageContent(void)
   TEST_CHECK(createPageFile (TESTPF));
   TEST_CHECK(openPageFile (TESTPF, &fh));
   printf("created and opened file\n");
+  ASSERT_EQUALS_INT(
+          1, getTotalNumBlocks(&fh),
+          "expected newly created page file to have exactly 1 block");
+
   // read first page into handle
   TEST_CHECK(readFirstBlock (&fh, ph));
+
   // the page should be empty (zero bytes)
   for (i=0; i < PAGE_SIZE; i++)
     ASSERT_TRUE((ph[i] == 0), "expected zero byte in first page of freshly initialized page");
@@ -104,22 +110,22 @@ testSinglePageContent(void)
 }
 
 
-void testAll(){
-
-
-  SM_FileHandle fh;
+void testAll()
+{
+  SM_FileHandle fh = {};
   SM_PageHandle ph;
 
   int i;
   testName = "test multi-page content";
   ph = (SM_PageHandle) malloc(PAGE_SIZE);
-  memset(ph, '.', PAGE_SIZE); 
-  //expect error if reading or writing unopened pagefile
-  ASSERT_TRUE((writeBlock(0, &fh, ph) != RC_OK), "cannot write to unopened pagefile"); 
+  memset(ph, '.', PAGE_SIZE);
 
+  // expect error if reading or writing unopened pagefile
+  ASSERT_TRUE((writeBlock(0, &fh, ph) != RC_OK), "cannot write to unopened pagefile");
   ASSERT_TRUE((readBlock(0, &fh, ph) != RC_OK), "cannot read unopened pagefile");
 
   //write three blocks and test if the values are correct
+  destroyPageFile(TESTPF);
   TEST_CHECK(createPageFile(TESTPF));
   TEST_CHECK(openPageFile(TESTPF, &fh));
   ASSERT_TRUE((getBlockPos(&fh) == 0), "new pagefile has zero blocks");        //ensure starting at zero pages
@@ -127,16 +133,17 @@ void testAll(){
 
   TEST_CHECK(writeBlock(0, &fh, ph)); 
   TEST_CHECK(readFirstBlock(&fh, ph));
-  for (i=0; i < PAGE_SIZE; i++)
-    ASSERT_TRUE((ph[i] == '.'), "character in page read from disk is the one we expected.");
+  for (i=0; i < PAGE_SIZE; i++) {
+      ASSERT_TRUE((ph[i] == '.'),"character in page read from disk is the one we expected.");
+  }
   ASSERT_TRUE((getBlockPos(&fh) == 0), "current block position correct");        //ensure written 1 page
   printf("wrote and read 1st block\n");
 
   TEST_CHECK(appendEmptyBlock(&fh));
   TEST_CHECK(readBlock(1, &fh, ph));
-  for (i=0; i < PAGE_SIZE; i++)
-    ASSERT_TRUE((ph[i] == '\0'), "character in page read from disk is the one we expected.");
   ASSERT_TRUE((getBlockPos(&fh) == 1), "current block position correct");        //ensure written 1+NULL pages
+  for (i = 0; i < PAGE_SIZE; i++)
+    ASSERT_TRUE((ph[i] == '\0'), "character in page read from disk is the one we expected.");
   printf("wrote a NULL block\n");
 
   memset(ph, 'k', PAGE_SIZE); 
