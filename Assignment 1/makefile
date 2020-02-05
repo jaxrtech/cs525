@@ -14,7 +14,7 @@ OBJECTS = test_assign1_1.o storage_mgr.o dberror.o
 
 
 test_assign1 : $(OBJECTS)
-	$(CC) $(CFLAGS) $(CFLAGS) -o $@ $^ 
+	$(CC) $(CFLAGS) -o $@ $^ 
 
 .PHONY : clean
 clean : #rm command is not working on powershell for this version of make
