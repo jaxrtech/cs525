@@ -20,27 +20,29 @@ typedef enum ReplacementStrategy {
 typedef int PageNumber;
 #define NO_PAGE -1
 
-typedef struct BM_BufferPool { //Page Directory
-	char *pageFile;
-	int numPages;
-	ReplacementStrategy strategy;
-	BP_Metadata *mgmtData; // use this one to store the bookkeeping info your buffer
-					// manager needs for a buffer pool
-} BM_BufferPool;
+typedef struct BM_PageHandle { //page dir entry
+	PageNumber pageNum; //page ID (first page is zero)
+	char *data;			//points to page content in memory
+	int dirtyFlag; 		//for clock replacement
+	int refCounter;		//store no. threads on each page (increment before accessing)
+} BM_PageHandle;
 
 typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
 {
 	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
-	int LRU_Page;	//store array OFFSET for LRU replacement
-	int LFU_Page;	//store array OFFSET for LFU replacement
-	int refCounter; //num of threads accessing PAGE DIR (increment before accessing)
+	BM_PageHandle* LRU_Page;  //store pointer to LRU Page
+	int LFU_Page;			  //store pointer to LRU Page
+	int refCounter;			  //num of threads accessing PAGE DIR (increment before accessing)
 } BP_Metadata;
 
-typedef struct BM_PageHandle { //page dir entry
-	PageNumber pageNum; //first page is zero (also page ID)
-	char *data;			//points to page content in memory
-	int dirtyFlag; 		//for clock replacement
-} BM_PageHandle;
+typedef struct BM_BufferPool { //Page Directory
+	char *pageFile;
+	int numPages;
+	ReplacementStrategy strategy;
+	void *stratData;	   //strategy data for removal strategy
+	BP_Metadata *mgmtData; // use this one to store the bookkeeping info your buffer
+						   // manager needs for a buffer pool
+} BM_BufferPool;
 
 
 // convenience macros
