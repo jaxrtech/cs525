@@ -21,6 +21,12 @@ RC initBufferPool(
         ReplacementStrategy strategy,
         void *stratData)
 {
+    //Store BM_BufferPool Attributes
+    bm->pageFile = pageFileName;
+    bm.numPages = numPages;
+    bm.strategy = strategy;
+
+
     return -1;
 }
 
