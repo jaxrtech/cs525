@@ -30,13 +30,14 @@ typedef struct BM_PageHandle { //page dir entry
 typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
 {
 	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
-	BM_PageHandle* LRU_Page;  //store pointer to LRU Page
-	int LFU_Page;			  //store pointer to LRU Page
-	int refCounter;			  //num of threads accessing PAGE DIR (increment before accessing)
+	BM_PageHandle *LRU_Page;  //store pointer to LRU Page
+	BM_PageHandle *LFU_Page;  //store pointer to LRU Page
+	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
+	int inUse;				  //no. frames in use (also index for next open frame)
 } BP_Metadata;
 
 typedef struct BM_BufferPool { //Page Directory
-	char *pageFile;
+	const char *pageFile;
 	int numPages;
 	ReplacementStrategy strategy;
 	void *stratData;	   //strategy data for removal strategy
@@ -72,5 +73,8 @@ bool *getDirtyFlags (BM_BufferPool *const bm);
 int *getFixCounts (BM_BufferPool *const bm);
 int getNumReadIO (BM_BufferPool *const bm);
 int getNumWriteIO (BM_BufferPool *const bm);
+
+//helper functions 
+BM_PageHandle *checkPool(BM_BufferPool const *bm, BM_PageHandle *page);
 
 #endif
