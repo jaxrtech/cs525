@@ -1,6 +1,7 @@
 CC = gcc
 CFLAGS = -Wall
 RM = del
+all: test_assign2_1 test_assign2_2
 
 HEADERS = \
 	buffer_mgr.h \
@@ -13,17 +14,16 @@ HEADERS = \
 OBJECTS = \
 	buffer_mgr_stat.c \
 	storage_mgr.c \
-	dberror.c \
-	test_assign2_1.c \
-	test_assign2_2.c
+	buffer_mgr.c \
+	dberror.c
 
 %.o : %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c -o $@ $< 
+	$(CC) $(CFLAGS) -c -o $@ $^ 
 
-test_assign2_1 : $(OBJECTS)
+test_assign2_1 : $(OBJECTS) test_assign2_1.c
 	$(CC) $(CFLAGS) -o $@ $^ 
 
-test_assign2_2 : $(OBJECTS)
+test_assign2_2 : $(OBJECTS) test_assign2_2.c
 	$(CC) $(CFLAGS) -o $@ $^ 
 
 

@@ -64,8 +64,7 @@ RC forceFlushPool(BM_BufferPool *const bm);
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page);
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page);
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page);
-RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, 
-		const PageNumber pageNum);
+RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber pageNum);
 
 // Statistics Interface
 PageNumber *getFrameContents (BM_BufferPool *const bm);

@@ -24,7 +24,7 @@ RC initBufferPool(
         ReplacementStrategy strategy,
         void *stratData)
 {
-    printf("ASSIGNMENT 2 (Buffer Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n");
+    printf("ASSIGNMENT 2 (Buffer Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n\n");
     
     MAKE_POOL();
 
@@ -63,6 +63,8 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
     free(md_tmp);
     free(bm);
 
+    closePageFile(&fHandle);
+
     return RC_OK;
 }
 
@@ -89,25 +91,39 @@ RC pinPage (
         BM_PageHandle *const page,
         const PageNumber pageNum)
 {
-    return -1;
+    BM_PageHandle *pg = NULL;
+    if ((pg = checkPool(bm, page))){ //check if page in buffer
+        return pg;
+    }
+    else { //page is not in buffer. load page to frame (evict if buffer is full)
+        BP_Metadata *ptable = bm->mgmtData;
+        if (ptable->inUse == bm->numPages){ //buffer full. evict using specified strategy
+            //evict
+        }        
+        //load the page into buffer
+
+        //bm->mgmtData->pageTable[bm->mgmtData->inUse] = *page; //put page in next available frame 
+        BM_PageHandle *newpg = &bm->mgmtData->pageTable[bm->mgmtData->inUse]; //get address of next available frame
+        //set frame values
+        newpg->pageNum = page->pageNum;
+        newpg->data = page->data;
+        newpg->dirtyFlag = page->dirtyFlag;
+        newpg->refCounter = page->refCounter;
+
+        return newpg;
+    }
 }
 
 // Buffer Manager Interface Access Pages
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page)
 {
     BM_PageHandle *pg = NULL;
-    if ((pg = checkPool(bm, page)) == NULL){ //check buffer for page 
-        bm->mgmtData->pageTable[bm->mgmtData->inUse] = *page;
-        /*
-        BM_PageHandle *newpg = bm->mgmtData->pageTable[bm->mgmtData->inUse];
-        
-        newpg->pageNum = page->pageNum;
-        newpg->data = page->data;
-        newpg->dirtyFlag = page->dirtyFlag;
-        newpg->refCounter = page->refCounter;
-       */
+    if ((pg = checkPool(bm, page))){ //check buffer for page 
+        pg->dirtyFlag=1;
+        return RC_OK;
     }
-    return RC_OK;
+    else { return RC_PAGE_NOT_IN_BUFFER; }
+
 }
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page)
@@ -148,14 +164,15 @@ getNumWriteIO (BM_BufferPool *const bm)
     return -1;
 }
 
-//HELPER FUNCTIONS
+/************** HELPER FUNCTIONS ***************/
 
+//Returns a pointer to page if it is in bm, NULL otherwise
 BM_PageHandle *checkPool(BM_BufferPool const *bm, BM_PageHandle *page){
     int i;
     BM_PageHandle *pg = NULL;
-    BP_Metadata *pgdir = bm->mgmtData;
-    for (i = 0; i < pgdir->inUse; i++){
-        pg = &((pgdir->pageTable)[i]);
+    BP_Metadata *ptable = bm->mgmtData;
+    for (i = 0; i < ptable->inUse; i++){
+        pg = &((ptable->pageTable)[i]);
         if (pg->pageNum == page->pageNum){
             return pg;
         }

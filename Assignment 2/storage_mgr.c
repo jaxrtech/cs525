@@ -14,11 +14,7 @@
 
 /* manipulating page files */
 
-void initStorageManager (void)
-{
-    // does nothing for now
-	printf("ASSIGNMENT 1 (Storage Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n");
-}
+void initStorageManager (void){}
 
 
 /**

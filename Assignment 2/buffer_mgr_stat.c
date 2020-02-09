@@ -1,8 +1,9 @@
-#include "buffer_mgr_stat.h"
-#include "buffer_mgr.h"
-
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "buffer_mgr.h"
+#include "buffer_mgr_stat.h"
+
 
 // local functions
 static void printStrat (BM_BufferPool *const bm);
