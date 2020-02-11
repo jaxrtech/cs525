@@ -20,18 +20,31 @@ typedef enum ReplacementStrategy {
 typedef int PageNumber;
 #define NO_PAGE -1
 
-typedef struct BM_BufferPool {
-	char *pageFile;
+typedef struct BM_PageHandle { //page dir entry
+	PageNumber pageNum; //page ID (first page is zero)
+	char *data;			//points to page content in memory
+	int dirtyFlag; 		//for clock replacement
+	int refCounter;		//store no. threads on each page (increment before accessing)
+} BM_PageHandle;
+
+typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
+{
+	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
+	BM_PageHandle *LRU_Page;  //store pointer to LRU Page
+	BM_PageHandle *LFU_Page;  //store pointer to LRU Page
+	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
+	int inUse;				  //no. frames in use (also index for next open frame)
+} BP_Metadata;
+
+typedef struct BM_BufferPool { //Page Directory
+	const char *pageFile;
 	int numPages;
 	ReplacementStrategy strategy;
-	void *mgmtData; // use this one to store the bookkeeping info your buffer
-	// manager needs for a buffer pool
+	void *stratData;	   //strategy data for removal strategy
+	BP_Metadata *mgmtData; // use this one to store the bookkeeping info your buffer
+						   // manager needs for a buffer pool
 } BM_BufferPool;
 
-typedef struct BM_PageHandle {
-	PageNumber pageNum;
-	char *data;
-} BM_PageHandle;
 
 // convenience macros
 #define MAKE_POOL()					\
@@ -51,8 +64,7 @@ RC forceFlushPool(BM_BufferPool *const bm);
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page);
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page);
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page);
-RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, 
-		const PageNumber pageNum);
+RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber pageNum);
 
 // Statistics Interface
 PageNumber *getFrameContents (BM_BufferPool *const bm);
@@ -60,5 +72,9 @@ bool *getDirtyFlags (BM_BufferPool *const bm);
 int *getFixCounts (BM_BufferPool *const bm);
 int getNumReadIO (BM_BufferPool *const bm);
 int getNumWriteIO (BM_BufferPool *const bm);
+
+//helper functions 
+BM_PageHandle *checkPool(BM_BufferPool const *bm, BM_PageHandle *page);
+void evict(BM_BufferPool const *bm);
 
 #endif
