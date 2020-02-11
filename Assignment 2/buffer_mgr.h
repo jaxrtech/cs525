@@ -75,5 +75,6 @@ int getNumWriteIO (BM_BufferPool *const bm);
 
 //helper functions 
 BM_PageHandle *checkPool(BM_BufferPool const *bm, BM_PageHandle *page);
+void evict(BM_BufferPool const *bm);
 
 #endif

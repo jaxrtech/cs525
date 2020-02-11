@@ -14,7 +14,7 @@
 #include "storage_mgr.h"
 #include "buffer_mgr.h"
 
-SM_FileHandle fHandle;
+SM_FileHandle *fHandle;  //global pagefile handler
 
 // Buffer Manager Interface Pool Handling
 RC initBufferPool(
@@ -43,7 +43,7 @@ RC initBufferPool(
     (bm->mgmtData)->refCounter = 0; //nothing in use
     (bm->mgmtData)->inUse = 0; //no pages in use
     //open pagefile
-    openPageFile((char*)pageFileName, &fHandle); 
+    //openPageFile((char*)pageFileName, fHandle); 
     
     return RC_OK;
 }
@@ -61,9 +61,9 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
     //Free buffer manager structs
     free(ph_tmp);
     free(md_tmp);
-    free(bm);
+    free(bp_tmp);
 
-    closePageFile(&fHandle);
+    closePageFile(fHandle);
 
     return RC_OK;
 }
@@ -93,24 +93,26 @@ RC pinPage (
 {
     BM_PageHandle *pg = NULL;
     if ((pg = checkPool(bm, page))){ //check if page in buffer
-        return pg;
+        (bm->mgmtData)->refCounter += 1; //increment pin/ref counter
+        return RC_OK;
     }
     else { //page is not in buffer. load page to frame (evict if buffer is full)
         BP_Metadata *ptable = bm->mgmtData;
-        if (ptable->inUse == bm->numPages){ //buffer full. evict using specified strategy
-            //evict
+        while(ptable->inUse == bm->numPages){ //buffer full. keep trying to evict until free space found
+            evict(bm);//evict
         }        
         //load the page into buffer
-
-        //bm->mgmtData->pageTable[bm->mgmtData->inUse] = *page; //put page in next available frame 
+        char *pgData = NULL;
+        //read the page into the pagehandle
+        readBlock(pageNum, fHandle, pgData);
         BM_PageHandle *newpg = &bm->mgmtData->pageTable[bm->mgmtData->inUse]; //get address of next available frame
         //set frame values
         newpg->pageNum = page->pageNum;
-        newpg->data = page->data;
         newpg->dirtyFlag = page->dirtyFlag;
-        newpg->refCounter = page->refCounter;
+        newpg->refCounter = 1; //new page only pinned once
+        newpg->data = pgData; //point to the buffer that read the block
 
-        return newpg;
+        return RC_OK;
     }
 }
 
@@ -123,17 +125,29 @@ RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page)
         return RC_OK;
     }
     else { return RC_PAGE_NOT_IN_BUFFER; }
-
 }
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page)
 {
-    return -1;
+    BM_PageHandle *pg = NULL;
+    if ((pg = checkPool(bm, page))){ //check if page in buffer
+        (bm->mgmtData)->refCounter -= 1; //increment pin/ref counter
+        return RC_OK;
+    }
+    return RC_PAGE_NOT_IN_BUFFER;
 }
 
-RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page)
+RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) //write page to disk
 {
-    return -1;
+    BM_PageHandle *pg = NULL;
+    if ((pg = checkPool(bm, page))){ //check if page in buffer
+        ensureCapacity(pg->pageNum+1, fHandle);
+        //write page to disk here
+        writeBlock(pg->pageNum, fHandle, pg->data);
+        pg->dirtyFlag = 0;
+        return RC_OK;
+    }
+    return RC_PAGE_NOT_IN_BUFFER;
 }
 
 // Statistics Interface
@@ -178,4 +192,8 @@ BM_PageHandle *checkPool(BM_BufferPool const *bm, BM_PageHandle *page){
         }
     }
     return pg;
+}
+
+void evict(BM_BufferPool const *bm){
+    return;
 }

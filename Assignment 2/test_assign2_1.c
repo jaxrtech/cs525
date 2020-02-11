@@ -43,8 +43,10 @@ int
 main (void) 
 {
   initStorageManager();
+  printf("INIT STORAGE MGR\n");
   testName = "";
 
+  printf("TEST R/W DUMMYPAGES\n");
   testCreatingAndReadingDummyPages();
   testReadPage();
   testFIFO();
