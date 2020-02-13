@@ -30,6 +30,7 @@ RC initBufferPool(BM_BufferPool *const bm, const char *const pageFileName,
     BP_Metadata *bmdata = malloc(sizeof(BP_Metadata));
     bmdata->clockCount = 0; //for clock replacement
     bmdata->refCounter = 0; //nothing using buffer yet
+    bmdata->inUse = 0;		//no pages in use
     bm->mgmtData = &bmdata; //link struct
 
     //set up pagetable
@@ -93,14 +94,23 @@ RC forceFlushPool(BM_BufferPool *const bm){
 	return RC_OK;
 }
 
-
 // Buffer Manager Interface Access Pages
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
-	return -1;
+	BM_PageHandle *pg = checkPool(bm, page);
+	if(pg){
+		pg->dirtyFlag = 1;
+		return RC_OK;
+	}
+	return RC_PAGE_NOT_IN_BUFFER;
 }
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page){
-	return -1;
+	BM_PageHandle *pg = checkPool(bm, page);
+	if(pg){
+		pg->refCounter -= 1;
+		return RC_OK;
+	}
+	return RC_PAGE_NOT_IN_BUFFER;
 }
 
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
@@ -108,6 +118,13 @@ RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
 }
 
 RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber pageNum){
+	BP_Metadata *bmdata = bm->mgmtData;
+	if (bmdata->inUse == bm->numPages){ //evict if buffer full
+		evict(bmdata->pageTable);
+	}
+	//create new page
+
+	updatePageTable(bmdata->pageTable);
 	return -1;
 }
 
@@ -131,4 +148,71 @@ int getNumReadIO (BM_BufferPool *const bm){
 
 int getNumWriteIO (BM_BufferPool *const bm){
 	return -1;
+}
+
+
+/*		HELPER FUNCTIONS		*/
+BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page){
+	BP_Metadata *bmdata = bm->mgmtData;
+	return NULL;
+}
+
+RC evict(BM_BufferPool *const bm){
+	//check page in buffer handled by calling function
+	//pages will be sorted based on update function so eviction is standard unless it is clock 
+	BP_Metadata *bmdata = bm->mgmtData;
+	BM_PageHandle *toevict = bmdata->pageTable;
+	int i;
+	if (bm->strategy == 2){ //clock strategy evicts starting on counter pointer
+		for (i = 0; i < bmdata->clockCount; ++i){
+			toevict = toevict->next;
+		}
+	}
+	if(&toevict == &bmdata->pageTable){ //evicting head
+		bmdata->pageTable = toevict->next;
+	} else {	
+		for (i = 0; i < bmdata->inUse; ++i){
+			if(toevict->refCounter > 0){ //if page being used
+				toevict = toevict->next;
+				continue;
+			} 
+			if(toevict->dirtyFlag > 0){ //page not used but dirty
+				//writePageToDisk();
+			}
+			//page not dirty or already written to disk
+			toevict->prev->next = toevict->next; //unlink from ptable
+			toevict->next->prev = toevict->prev;
+
+			bmdata->pageTable->prev->next = toevict; //relink to end of ptable
+			toevict->prev = bmdata->pageTable->prev; 
+			bmdata->pageTable->prev = toevict;
+			toevict->next = bmdata->pageTable;
+
+		}
+	}
+	//clear toevict
+	toevict->data = NULL;
+	toevict->dirtyFlag = 0;
+	toevict->pageNum = 0;
+	bmdata->inUse -= 1;
+	return RC_OK;
+}
+
+void removePage(BP_Metadata* pageTable){
+	//ASSUMES LINKEDLIST IS ALWAYS SORTED
+	//will always remove the first unpinned page in the pagetable
+	//rebalances linked list
+
+	//if head, repoint then delete like any other node
+	return;
+}
+
+void updatePageTable(BM_PageHandle* pageTable){
+	//sort linkedlist by strategy params
+		//for FIFO: sort by first created (easiest)
+		//for LRU: sort by last used
+		//for LFU: sort by refCounter
+		//for CLOCK: keep in order of FIFO, but use clock counter to choose which page to start eviction at
+		//for LRU-K: ???????????????
+	return;
 }

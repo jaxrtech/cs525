@@ -43,6 +43,7 @@ typedef struct BP_Metadata //stores infor for page replacement pointed to by mgm
 	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
 	int clockCount;			  //stores current position of clock in buffer table
 	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
+	int inUse;
 } BP_Metadata;
 
 // convenience macros
@@ -72,5 +73,19 @@ bool *getDirtyFlags (BM_BufferPool *const bm);
 int *getFixCounts (BM_BufferPool *const bm);
 int getNumReadIO (BM_BufferPool *const bm);
 int getNumWriteIO (BM_BufferPool *const bm);
+
+//Helper Functions
+BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page);
+RC evict(BM_BufferPool *const bm);
+void removePage(BP_Metadata *pageTable);
+void updatePageTable(BM_PageHandle *pageTable); //call this on pin/unpin
+
+//Eviction Functions
+RC FIFO(BM_BufferPool *const bm, BM_PageHandle *page);
+RC LRU(BM_BufferPool *const bm, BM_PageHandle *page);
+RC LFU(BM_BufferPool *const bm, BM_PageHandle *page);
+RC LRU_K(BM_BufferPool *const bm, BM_PageHandle *page);
+RC CLOCK(BM_BufferPool *const bm, BM_PageHandle *page);
+
 
 #endif
