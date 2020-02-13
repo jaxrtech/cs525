@@ -21,17 +21,29 @@ typedef int PageNumber;
 #define NO_PAGE -1
 
 typedef struct BM_BufferPool {
-	char *pageFile;
+	const char *pageFile;
 	int numPages;
 	ReplacementStrategy strategy;
+	void *stratData;
 	void *mgmtData; // use this one to store the bookkeeping info your buffer
 	// manager needs for a buffer pool
 } BM_BufferPool;
 
 typedef struct BM_PageHandle {
+	int refCounter;	
+	int dirtyFlag;
 	PageNumber pageNum;
 	char *data;
+	struct BM_PageHandle *next;
+	struct BM_PageHandle *prev;
 } BM_PageHandle;
+
+typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
+{
+	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
+	int clockCount;			  //stores current position of clock in buffer table
+	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
+} BP_Metadata;
 
 // convenience macros
 #define MAKE_POOL()					\

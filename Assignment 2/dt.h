@@ -2,8 +2,8 @@
 #define DT_H
 
 // define bool if not defined
-#ifndef bool
-    typedef short bool;
+#ifndef bool 
+	typedef short bool;
 #define true 1
 #define false 0
 #endif
