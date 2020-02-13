@@ -106,25 +106,35 @@ RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page){
 	BM_PageHandle *pg = checkPool(bm, page);
+	BP_Metadata *bmdata = bm->mgmtData;
 	if(pg){
 		pg->refCounter -= 1;
+		updatePageTable(bm, bmdata->pageTable);
+		bmdata->refCounter-=1; //decrement buf mgr ref counter for thread use
 		return RC_OK;
 	}
 	return RC_PAGE_NOT_IN_BUFFER;
 }
 
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
+	BP_Metadata *bmdata = bm->mgmtData;
+	//NEED TO DO!!!!!!!!!!			write page to disk here
+	updatePageTable(bm, bmdata->pageTable);
 	return -1;
 }
 
 RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber pageNum){
 	BP_Metadata *bmdata = bm->mgmtData;
-	if (bmdata->inUse == bm->numPages){ //evict if buffer full
-		evict(bmdata->pageTable);
+	BM_PageHandle *pg = checkPool(bm, page);
+	if(pg){ //if page in buffer, increment pin count
+		pg->refCounter += 1;
 	}
-	//create new page
-
-	updatePageTable(bmdata->pageTable);
+	else if (bmdata->inUse == bm->numPages){ //evict if buffer full
+		evict(bm);
+	}
+	//fetch page from memory
+	bmdata->refCounter+=1; //increment buf mgr ref counter for thread use
+	updatePageTable(bm, bmdata->pageTable);
 	return -1;
 }
 
@@ -177,7 +187,7 @@ RC evict(BM_BufferPool *const bm){
 				continue;
 			} 
 			if(toevict->dirtyFlag > 0){ //page not used but dirty
-				//writePageToDisk();
+				forcePage(bm, toevict); //write back to disk
 			}
 			//page not dirty or already written to disk
 			toevict->prev->next = toevict->next; //unlink from ptable
@@ -198,21 +208,29 @@ RC evict(BM_BufferPool *const bm){
 	return RC_OK;
 }
 
-void removePage(BP_Metadata* pageTable){
-	//ASSUMES LINKEDLIST IS ALWAYS SORTED
-	//will always remove the first unpinned page in the pagetable
-	//rebalances linked list
-
-	//if head, repoint then delete like any other node
-	return;
-}
-
-void updatePageTable(BM_PageHandle* pageTable){
+void updatePageTable(BM_BufferPool *const bm, BM_PageHandle* pageTable){
 	//sort linkedlist by strategy params
 		//for FIFO: sort by first created (easiest)
 		//for LRU: sort by last used
 		//for LFU: sort by refCounter
 		//for CLOCK: keep in order of FIFO, but use clock counter to choose which page to start eviction at
 		//for LRU-K: ???????????????
+
+	switch(bm->strategy){
+		case 0: //RS_FIFO
+			//structure natively adds/removes pages using FIFO
+			break;
+		case 2: //RS_CLOCK
+			//CLOCK works with any order
+			break;
+		case 1: //RS_LRU (need to sort on add/edit/evict)
+			break;
+		case 3: //RS_LFU ()
+			break;
+		case 4: //RS_LRU_K
+			break;
+		default:
+			break;
+	}
 	return;
 }
