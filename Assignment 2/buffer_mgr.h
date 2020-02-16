@@ -45,6 +45,7 @@ typedef struct BP_Metadata //stores infor for page replacement pointed to by mgm
 	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
 	int inUse;
 	int *sortOrder;
+	SM_FileHandle *storageManager;
 } BP_Metadata;
 
 // convenience macros

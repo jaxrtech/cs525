@@ -14,11 +14,20 @@
 #include "storage_mgr.h"
 #include "buffer_mgr.h"
 
-RC initBufferPool(BM_BufferPool *const bm, const char *const pageFileName, 
-		const int numPages, ReplacementStrategy strategy,
+static void freeBufferPageTable(const BM_BufferPool *bm);
+
+RC initBufferPool(
+        BM_BufferPool *const bm,
+        const char *const pageFileName,
+		const int numPages,
+		ReplacementStrategy strategy,
 		void *stratData)
 {
 	printf("ASSIGNMENT 2 (Buffer Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n\n");
+
+	BP_Metadata *bmdata = NULL;
+    SM_FileHandle *storageHandle = NULL;
+	BM_PageHandle *node = NULL;
 
     //Store BM_BufferPool Attributes
     bm->pageFile = pageFileName;
@@ -27,14 +36,24 @@ RC initBufferPool(BM_BufferPool *const bm, const char *const pageFileName,
     bm->stratData = stratData;
 
     //set up bookkeeping data
-    BP_Metadata *bmdata = malloc(sizeof(BP_Metadata));
+    bmdata = malloc(sizeof(BP_Metadata));
     bmdata->clockCount = 0; //for clock replacement
     bmdata->refCounter = 0; //nothing using buffer yet
     bmdata->inUse = 0;		//no pages in use
     bm->mgmtData = &bmdata; //link struct
 
+    //open the storage manager
+    storageHandle = malloc(sizeof(SM_FileHandle));
+    RC result;
+    if ((result = openPageFile(pageFileName, storageHandle)) != RC_OK) {
+        free(storageHandle);
+        free(bmdata);
+        return result;
+    }
+    bmdata->storageManager = storageHandle;
+
     //set up pagetable
-    BM_PageHandle *node = malloc(sizeof(BM_PageHandle)); 
+    node = malloc(sizeof(BM_PageHandle));
 	node->refCounter = 0;
 	node->dirtyFlag = 0;
 	node->pageNum = -1;
@@ -68,16 +87,20 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
 		return RC_BM_IN_USE; //cannot free bm because a page is still in use
 	}
 	//free doubly linked list
-	BM_PageHandle *node = bmdata->pageTable;
-	int i;
-    for (i = 0; i < bm->numPages; ++i){
+    freeBufferPageTable(bm);
+    free(bm->mgmtData); //free struct holding pg table
+    free(bm); //free buffer manager
+	return RC_OK;
+}
+
+static void freeBufferPageTable(const BM_BufferPool *bm) {
+    BP_Metadata *bmdata = bm->mgmtData;
+    BM_PageHandle *node = bmdata->pageTable;
+    for (int i = 0; i < bm->numPages; ++i){
     	BM_PageHandle *newnode = node->next;
     	free(node);
     	node = newnode;
     }
-    free(bm->mgmtData); //free struct holding pg table
-    free(bm); //free buffer manager
-	return RC_OK;
 }
 
 RC forceFlushPool(BM_BufferPool *const bm){
@@ -117,8 +140,9 @@ RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page){
 }
 
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
-	BP_Metadata *bmdata = bm->mgmtData;
-	//NEED TO DO!!!!!!!!!!			write page to disk here
+    BP_Metadata *bmdata = bm->mgmtData;
+	SM_FileHandle *storage = bmdata->storageManager;
+	writeBlock(page->pageNum, storage, page->data);
 	updatePageTable(bm, bmdata->pageTable);
 	return -1;
 }
@@ -173,7 +197,7 @@ RC evict(BM_BufferPool *const bm){
 	BP_Metadata *bmdata = bm->mgmtData;
 	BM_PageHandle *toevict = bmdata->pageTable;
 	int i;
-	if (bm->strategy == 2){ //clock strategy evicts starting on counter pointer
+	if (bm->strategy == RS_CLOCK){ //clock strategy evicts starting on counter pointer
 		for (i = 0; i < bmdata->clockCount; ++i){
 			toevict = toevict->next;
 		}
