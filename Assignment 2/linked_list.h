@@ -27,7 +27,7 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize);
 BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self);
 bool LinkedList_isEmpty(BM_LinkedList *list);
 void LinkedList_unlink(BM_LinkedListElement *el);
-bool LinkedList_remove(BM_LinkedList *self, BM_LinkedListElement *el);
+bool LinkedList_delete(BM_LinkedList *self, BM_LinkedListElement *el);
 void LinkedList_prepend(BM_LinkedList *list, BM_LinkedListElement *el);
 void LinkedList_append(BM_LinkedList *list, BM_LinkedListElement *el);
 

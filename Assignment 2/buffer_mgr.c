@@ -14,13 +14,10 @@
 #include "storage_mgr.h"
 #include "buffer_mgr.h"
 #include "replacement_strategy.h"
+#include "freespace.h"
 
 //Helper Functions
-static BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page);
-static RC evict(BM_BufferPool *const bm);
-static void updatePageTable(BM_BufferPool *const bm, BM_PageHandle *pageTable); //call this on pin/unpin
-static RC freeBufferPage(BM_BufferPool *const bm, int blockNum);
-static int markNextFreeBufferPage(BM_BufferPool *const bm);
+static RC evict(BM_BufferPool *bm);
 static void freeBufferPageTable(const BM_BufferPool *bm);
 
 //
@@ -64,6 +61,9 @@ RC initBufferPool(
     meta->blocks = calloc(numPages, PAGE_SIZE);
     meta->freespace = Freespace_create(numPages);
 
+    // allocate hash map
+    meta->pageMapping = HashMap_create(128);
+
     //open the storage manager
     storageHandle = malloc(sizeof(SM_FileHandle));
     RC result;
@@ -105,44 +105,42 @@ static void freeBufferPageTable(const BM_BufferPool *bm) {
 
 RC forceFlushPool(BM_BufferPool *const bm){
 	BP_Metadata *bmdata = bm->mgmtData;
-	BM_PageHandle *start = (BM_PageHandle *)&bmdata->pageTable->elementsDataBuffer;
-	BM_PageHandle *end = start + bm->numPages;
-
-	for (BM_PageHandle *node = start; node < end; ++node) {
-		if (node->dirtyFlag == 1) {
-			forcePage(bm, node);
+    BM_LinkedList *pageTable = bmdata->pageTable;
+    BM_LinkedListElement *el = pageTable->head;
+	for (uint32_t i = 0; i < bm->numPages; ++i) {
+	    if (el == pageTable->sentinel) { break; }
+	    BM_PageHandle *page = (BM_PageHandle *) el->data;
+		if (page->dirtyFlag == 1){
+			forcePage(bm, page);
+			el = el->next;
 		}
 	}
-
 	return RC_OK;
 }
 
 // Buffer Manager Interface Access Pages
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
-	BM_PageHandle *pg = checkPool(bm, page);
     BP_Metadata *meta = bm->mgmtData;
-    if (pg) {
-        pg->dirtyFlag = 1;
-        meta->stats->dirtyFlags[pg->pageNum] = TRUE;
+    if (page) {
+        page->dirtyFlag = 1;
+        meta->stats->dirtyFlags[page->pageNum] = TRUE;
 		return RC_OK;
 	}
 	return RC_PAGE_NOT_IN_BUFFER;
 }
 
-RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page){
-	BM_PageHandle *pg = checkPool(bm, page);
+RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page) {
 	BP_Metadata *meta = bm->mgmtData;
-	if(pg){
-		pg->refCounter -= 1;
-		updatePageTable(bm, meta->pageTable);
+	if (page) {
+		page->refCounter -= 1;
         meta->refCounter -= 1; //decrement buf mgr ref counter for thread use
-		meta->stats->fixCounts[pg->pageNum] -= 1;
+		meta->stats->fixCounts[page->pageNum] -= 1;
 		return RC_OK;
 	}
 	return RC_PAGE_NOT_IN_BUFFER;
 }
 
-RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
+RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) {
     BP_Metadata *bmdata = bm->mgmtData;
 	SM_FileHandle *storage = bmdata->storageManager;
 	writeBlock(page->pageNum, storage, page->data);
@@ -150,45 +148,49 @@ RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page){
 	return RC_OK;
 }
 
-RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber pageNum){
+RC pinPage (
+        BM_BufferPool *const bm,
+        BM_PageHandle *const page,
+        const PageNumber pageNum)
+{
 	BP_Metadata *meta = bm->mgmtData;
-	BM_PageHandle *table = meta->pageTable;
+    BM_LinkedList *pageTable = meta->pageTable;
 	SM_FileHandle *storage = meta->storageManager;
 	BP_Statistics *stats = meta->stats;
 
-	BM_PageHandle *pg = checkPool(bm, page);
-	if (pg) { //if page in buffer, increment pin count
-		pg->refCounter += 1;
-        meta->stats->fixCounts[pg->pageNum] += 1;
-    }
-	else {
-	    if (meta->inUse == bm->numPages) { //evict if buffer full
-	        evict(bm);
+	// check if page number exists
+    BM_LinkedListElement *el;
+    void *result = NULL;
+    if (HashMap_get(meta->pageMapping, pageNum, &result)) {
+        el = (BM_LinkedListElement *) result;
+        BM_PageHandle *handle = (BM_PageHandle *) el->data;
+        handle->refCounter += 1;
+        stats->fixCounts[pageNum] += 1;
+
+    } else {
+        if (meta->inUse == bm->numPages) { //evict if buffer full
+            evict(bm);
+        }
+
+        // find empty space in memory pool
+        el = LinkedList_fetch(pageTable);
+	    if (el == NULL) {
+	        fprintf(stderr, "pinPage: failed to pin page, evicted but list was full");
+	        exit(1);
 	    }
 
-	    // find empty space in memory pool
-	    int blockNum = markNextFreeBufferPage(bm);
-	    if (blockNum < 0) {
-	        return RC_BM_IN_USE;
-	    }
+	    // update page number to element mapping
+	    HashMap_put(meta->pageMapping, pageNum, el);
 
-	    // read into memory from disk
-	    pg = table->prev;
-	    if (pg->data != NULL) {
-            fprintf(stderr, "pinPage: expected free entry after evict but full\n");
-	        return RC_IM_NO_MORE_ENTRIES;
-	    }
-
-	    // put at the front
-
-
-	    pg->bufferPageNum = blockNum;
-	    readBlock(pageNum, storage, meta->blocks[blockNum]);
+        meta->strategyHandler->insert(bm, el);
+        BM_PageHandle *handle = (BM_PageHandle *) el->data;
+	    readBlock(pageNum, storage, handle->data);
 	}
 
 	// fetch page from memory
 	meta->refCounter += 1; //increment buf mgr ref counter for thread use
-	updatePageTable(bm, meta->pageTable);
+    meta->strategyHandler->use(bm, el);
+
 	return RC_OK;
 }
 
@@ -226,77 +228,38 @@ int getNumWriteIO (BM_BufferPool *const bm){
 
 
 /*		HELPER FUNCTIONS		*/
-BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page){
-	BP_Metadata *bmdata = bm->mgmtData;
-	// TODO
-	return page;
+void clearStats(BM_BufferPool *bm, uint32_t bufferPageNum) {
+    BP_Metadata *meta = bm->mgmtData;
+    BP_Statistics *stats = meta->stats;
+
+    stats->frameContents[bufferPageNum] = 0;
+    stats->dirtyFlags[bufferPageNum] = 0;
+    stats->fixCounts[bufferPageNum] = 0;
 }
 
-RC evict(BM_BufferPool *const bm){
-	BP_Metadata *bmdata = bm->mgmtData;
-	BM_PageHandle *toevict = bmdata->pageTable;
-	int i;
-	if (bm->strategy == RS_CLOCK){ //clock strategy evicts starting on counter pointer
-		for (i = 0; i < bmdata->clockCount; ++i){
-			toevict = toevict->next;
-		}
-	}
-	if(&toevict == &bmdata->pageTable){ //evicting head
-		bmdata->pageTable = toevict->next;
-	} else {	
-		for (i = 0; i < bmdata->inUse; ++i){
-			if(toevict->refCounter > 0){ //if page being used
-				toevict = toevict->next;
-				continue;
-			} 
-			if(toevict->dirtyFlag > 0){ //page not used but dirty
-				forcePage(bm, toevict); //write back to disk
-			}
-			//page not dirty or already written to disk
-			toevict->prev->next = toevict->next; //unlink from ptable
-			toevict->next->prev = toevict->prev;
+RC evict(BM_BufferPool *bm){
+	BP_Metadata *meta = bm->mgmtData;
+    BM_LinkedList *pageTable = meta->pageTable;
+    BM_LinkedListElement *el = meta->strategyHandler->elect(bm);
+    if (el == NULL) {
+        return RC_OK;
+    }
 
-			bmdata->pageTable->prev->next = toevict; //relink to end of ptable
-			toevict->prev = bmdata->pageTable->prev; 
-			bmdata->pageTable->prev = toevict;
-			toevict->next = bmdata->pageTable;
-		}
-	}
+    BM_PageHandle *page = (BM_PageHandle *) el->data;
+    uint32_t pageNum = page->pageNum;
+    if (page->dirtyFlag) {
+        forcePage(bm, page);
+    }
 
-	//clear toevict
-	freeBufferPage(bm, toevict->bufferPageNum);
-	toevict->data = NULL;
-	toevict->dirtyFlag = 0;
-	toevict->pageNum = 0;
-	bmdata->inUse -= 1;
+    clearStats(bm, page->bufferPageNum);
+    page->data = NULL;
+    page->pageNum = 0;
+    meta->inUse -= 1;
+
+    LinkedList_delete(pageTable, el);
+    HashMap_remove(meta->pageMapping, pageNum, NULL);
+
 	return RC_OK;
-}
-
-void updatePageTable(BM_BufferPool *const bm, BM_PageHandle* pageTable){
-	//sort linkedlist by strategy params
-		//for FIFO: sort by first created (easiest)
-		//for LRU: sort by last used
-		//for LFU: sort by refCounter
-		//for CLOCK: keep in order of FIFO, but use clock counter to choose which page to start eviction at
-		//for LRU-K: ???????????????
-
-	switch(bm->strategy){
-		case 0: //RS_FIFO
-			//structure natively adds/removes pages using FIFO
-			break;
-		case 2: //RS_CLOCK
-			//CLOCK works with any order
-			break;
-		case 1: //RS_LRU (need to sort on add/edit/evict)
-			break;
-		case 3: //RS_LFU ()
-			break;
-		case 4: //RS_LRU_K
-			break;
-		default:
-			break;
-	}
-	return;
 }
 
 

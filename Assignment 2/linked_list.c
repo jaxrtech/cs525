@@ -36,7 +36,10 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
 }
 
 BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self) {
-    uint32_t nextIndex = Freespace_markNext(self->freespace);
+    uint32_t nextIndex;
+    if (!Freespace_markNext(self->freespace, &nextIndex)) {
+        return NULL;
+    }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
     memset(el->data, 0, self->elementSize);
     return el;
@@ -55,12 +58,13 @@ bool LinkedList_isEmpty(BM_LinkedList *list) {
            && sentinel->prev == sentinel;
 }
 
-bool LinkedList_remove(BM_LinkedList *self, BM_LinkedListElement *el) {
+bool LinkedList_delete(BM_LinkedList *self, BM_LinkedListElement *el) {
     if (el == self->sentinel) {
         return FALSE;
     }
     LinkedList_unlink(el);
     Freespace_unmark(self->freespace, el->index);
+    memset(el->data, 0, self->elementSize);
     return TRUE;
 }
 

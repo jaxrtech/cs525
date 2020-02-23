@@ -13,6 +13,7 @@
 #include "storage_mgr.h"
 #include "freespace.h"
 #include "linked_list.h"
+#include "hash_map.h"
 
 #define BM_REPLACEMENT_STRAT_COUNT (5)
 
@@ -62,6 +63,7 @@ typedef struct BP_Metadata //stores infor for page replacement pointed to by mgm
 {
     SM_FileHandle *storageManager;
     BM_LinkedList *pageTable; // linked list of pages
+    HS_HashMap *pageMapping;  // hash map of page number to page handles
     struct RS_StrategyHandler *strategyHandler;  // use forward declaration
     char **blocks;            // memory pool for blocks
     FS_Freespace *freespace;
