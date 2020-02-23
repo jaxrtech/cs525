@@ -51,7 +51,7 @@ RC initBufferPool(
     meta->clockCount = 0; //for clock replacement
     meta->refCounter = 0; //nothing using buffer yet
     meta->inUse = 0;		//no pages in use
-    bm->mgmtData = &meta; //link struct
+    bm->mgmtData = meta; //link struct
 
     stats = malloc(sizeof(BP_Statistics));
     stats->diskReads = 0;
@@ -211,7 +211,7 @@ RC pinPage (BM_BufferPool *const bm, BM_PageHandle *const page, const PageNumber
 	    // put at the front
 
 
-	    pg->bufferBlkNum = blockNum;
+	    pg->bufferPageNum = blockNum;
 	    readBlock(pageNum, storage, meta->blocks[blockNum]);
 	}
 
@@ -257,13 +257,8 @@ int getNumWriteIO (BM_BufferPool *const bm){
 /*		HELPER FUNCTIONS		*/
 BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page){
 	BP_Metadata *bmdata = bm->mgmtData;
-
-	// Scan page table for
-
-
-	// TODO: Use a hash table instead
-
-	return NULL;
+	// TODO
+	return page;
 }
 
 RC evict(BM_BufferPool *const bm){
@@ -300,7 +295,7 @@ RC evict(BM_BufferPool *const bm){
 	}
 
 	//clear toevict
-	freeBufferPage(bm, toevict->)
+	freeBufferPage(bm, toevict->bufferPageNum);
 	toevict->data = NULL;
 	toevict->dirtyFlag = 0;
 	toevict->pageNum = 0;
@@ -376,13 +371,16 @@ int markNextFreeBufferPage(BM_BufferPool *const bm) {
     uint32_t *freespaceBitmap = meta->freeBitmap;
 
     for (size_t i = 0; i < len; i++) {
-        uint32_t chunk = freespaceBitmap[i];
+        uint32_t chunk = ~freespaceBitmap[i];
+        if (chunk == 0) { continue; }
+
         uint8_t b = lsb(chunk);
-        if (b != 0) {
-            int blk = (int) ((i * PAGES_PER_FREECHUNK) + b);
-            freespaceBitmap[i] = chunk & (1u << b);
-            return blk;
+        int blk = (int) ((i * PAGES_PER_FREECHUNK) + (31 - b));
+        if (blk > bm->numPages) {
+            return -1;
         }
+        freespaceBitmap[i] = chunk & (1u << b);
+        return blk;
     }
 
     return -1;

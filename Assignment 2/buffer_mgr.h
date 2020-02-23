@@ -38,7 +38,7 @@ typedef struct BM_PageHandle {
 	int refCounter;	
 	int dirtyFlag;
 	PageNumber pageNum;
-	int bufferBlkNum;
+	int bufferPageNum;
 	char *data;
 	struct BM_PageHandle *next;
 	struct BM_PageHandle *prev;
