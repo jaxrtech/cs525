@@ -8,6 +8,13 @@ static void RS_FIFO_insert(
     LinkedList_prepend(meta->pageTable, el);
 }
 
+static void RS_FIFO_use(
+        BM_BufferPool *pool,
+        BM_LinkedListElement *el)
+{
+    // empty
+}
+
 static BM_LinkedListElement* RS_FIFO_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
@@ -49,7 +56,7 @@ RS_StrategyHandler
         [RS_FIFO] = {
                 .strategy = RS_FIFO,
                 .insert = RS_FIFO_insert,
-                .use = NULL,
+                .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,
         },
         [RS_CLOCK] = NULL,

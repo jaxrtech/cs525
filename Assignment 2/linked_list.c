@@ -7,8 +7,7 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     list->count = count;
     list->elementSize = elementSize;
     list->elementsDataBuffer = calloc(count, elementSize);
-    const uint32_t metaCount = count + 1; // include a sentinel head
-    list->elementsMetaBuffer = calloc(metaCount, sizeof(BM_LinkedListElement));
+    list->elementsMetaBuffer = calloc(count, sizeof(BM_LinkedListElement));
     list->freespace = Freespace_create(count);
 
     // link the data buffers to the elements
@@ -16,18 +15,18 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     void *data = list->elementsDataBuffer;
 
     // setup sentinel head
-    BM_LinkedListElement *sentinel = &els[0];
+    BM_LinkedListElement *sentinel = malloc(sizeof(BM_LinkedListElement));
     list->sentinel = sentinel;
     list->head = sentinel;
     list->tail = sentinel;
 
-    sentinel->index = 0;
+    sentinel->index = -1;
     sentinel->data = NULL;
     sentinel->next = sentinel;
     sentinel->prev = sentinel;
 
     // setup rest of the elements
-    for (uint32_t i = 1; i < metaCount; i++) {
+    for (uint32_t i = 0; i < count; i++) {
         els[i].index = i;
         els[i].data = ((char *) data) + (elementSize * i);
     }
@@ -41,13 +40,18 @@ BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self) {
         return NULL;
     }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
-    memset(el->data, 0, self->elementSize);
     return el;
 }
 
 void LinkedList_unlink(BM_LinkedListElement *el) {
-    el->prev->next = el->next;
-    el->next->prev = el->prev;
+    if (el->prev) {
+        el->prev->next = el->next;
+    }
+
+    if (el->next) {
+        el->next->prev = el->prev;
+    }
+
     el->prev = NULL;
     el->next = NULL;
 }
@@ -72,31 +76,40 @@ void LinkedList_prepend(
         BM_LinkedList *list,
         BM_LinkedListElement *el)
 {
-    LinkedList_insertAfter(el, list->sentinel);
+    LinkedList_insertAfter(list, el, list->sentinel);
 }
 
 void LinkedList_append(
         BM_LinkedList *list,
         BM_LinkedListElement *el)
 {
-    LinkedList_insertBefore(el, list->sentinel);
+    LinkedList_insertBefore(list, el, list->sentinel);
 }
 
 
-void LinkedList_insertAfter(BM_LinkedListElement *item,
-                            BM_LinkedListElement *reference) {
+void LinkedList_insertAfter(
+        BM_LinkedList *list,
+        BM_LinkedListElement *item,
+        BM_LinkedListElement *reference) {
+
     LinkedList_unlink(item);
     reference->next->prev = item;
     reference->prev->next = item;
     item->prev = reference;
     item->next = reference->next;
     reference->next = item;
+
+    if (reference == list->sentinel) {
+        list->head = item;
+        list->tail = reference->prev;
+    }
 }
 
 void LinkedList_insertBefore(
+        BM_LinkedList *list,
         BM_LinkedListElement *item,
         BM_LinkedListElement *reference)
 {
     BM_LinkedListElement *previous = reference->prev;
-    LinkedList_insertAfter(item, previous);
+    LinkedList_insertAfter(list, item, previous);
 }

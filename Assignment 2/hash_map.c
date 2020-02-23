@@ -27,7 +27,9 @@ bool HashMap_get(HS_HashMap *self, uint32_t key, void **data) {
         node = node->next;
     }
 
-    if (node == NULL) {
+    if (!(node != NULL
+          && node->present
+          && node->key == key)) {
         return FALSE;
     }
 
@@ -50,6 +52,7 @@ void HashMap_put(HS_HashMap *self, uint32_t key, void *data) {
         node = malloc(sizeof(HS_Node));
     }
 
+    node->present = TRUE;
     node->key = key;
     node->data = data;
     node->next = NULL;
@@ -67,7 +70,7 @@ bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data) {
     HS_Node *node = &self->buckets[i];
     HS_Node *lookahead = node->next;
     while (lookahead != NULL) {
-        if (node->key == key) {
+        if (node->present && node->key == key) {
             found = true;
             break;
         }
@@ -81,6 +84,7 @@ bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data) {
         return false;
     }
 
+    node->present = FALSE;
     if (!isRoot) {
         free(node);
         prev->next = NULL;

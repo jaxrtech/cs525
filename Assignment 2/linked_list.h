@@ -32,10 +32,12 @@ void LinkedList_prepend(BM_LinkedList *list, BM_LinkedListElement *el);
 void LinkedList_append(BM_LinkedList *list, BM_LinkedListElement *el);
 
 void LinkedList_insertAfter(
+        BM_LinkedList *list,
         BM_LinkedListElement *item,
         BM_LinkedListElement *reference);
 
 void LinkedList_insertBefore(
+        BM_LinkedList *list,
         BM_LinkedListElement *item,
         BM_LinkedListElement *reference);
 

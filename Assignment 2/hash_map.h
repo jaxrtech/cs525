@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 typedef struct HS_Node {
+    bool present;
     uint32_t key;
     void *data;
     struct HS_Node *next;

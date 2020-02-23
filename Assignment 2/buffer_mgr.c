@@ -18,7 +18,6 @@
 
 //Helper Functions
 static RC evict(BM_BufferPool *bm);
-static void freeBufferPageTable(const BM_BufferPool *bm);
 
 //
 
@@ -57,9 +56,16 @@ RC initBufferPool(
     stats->fixCounts = calloc(numPages, sizeof(int));
     meta->stats = stats;
 
+    // set up pagetable
+    meta->pageTable = LinkedList_create(numPages, sizeof(BM_PageHandle));
+
     // allocate memory pool
-    meta->blocks = calloc(numPages, PAGE_SIZE);
+    meta->pageBuffer = calloc(numPages, PAGE_SIZE);
     meta->freespace = Freespace_create(numPages);
+    for (uint32_t i = 0; i < numPages; i++) {
+        BM_PageHandle *handle = meta->pageTable->elementsMetaBuffer[i].data;
+        handle->data = meta->pageBuffer + (i * PAGE_SIZE);
+    }
 
     // allocate hash map
     meta->pageMapping = HashMap_create(128);
@@ -74,43 +80,28 @@ RC initBufferPool(
     }
     meta->storageManager = storageHandle;
 
-    //set up pagetable
-    meta->pageTable = LinkedList_create(numPages, sizeof(BM_PageHandle));
-
 	return RC_OK;
 }
 
 RC shutdownBufferPool(BM_BufferPool *const bm){
     forceFlushPool(bm); //write all dirty pages to disk
-	BP_Metadata *bmdata = bm->mgmtData;
-	if (bmdata->refCounter > 0){
-		return RC_BM_IN_USE; //cannot free bm because a page is still in use
-	}
-	//free doubly linked list
-    freeBufferPageTable(bm);
-    free(bm->mgmtData); //free struct holding pg table
-    free(bm); //free buffer manager
+//	BP_Metadata *bmdata = bm->mgmtData;
+//	if (bmdata->refCounter > 0){
+//		return RC_BM_IN_USE; //cannot free bm because a page is still in use
+//	}
+//    free(bm->mgmtData); //free struct holding pg table
+//    free(bm); //free buffer manager
 	return RC_OK;
 }
 
-static void freeBufferPageTable(const BM_BufferPool *bm) {
-    BP_Metadata *bmdata = bm->mgmtData;
-    BM_PageHandle *node = bmdata->pageTable;
-    for (int i = 0; i < bm->numPages; ++i){
-    	BM_PageHandle *newnode = node->next;
-    	free(node);
-    	node = newnode;
-    }
-}
-
 RC forceFlushPool(BM_BufferPool *const bm){
-	BP_Metadata *bmdata = bm->mgmtData;
-    BM_LinkedList *pageTable = bmdata->pageTable;
+	BP_Metadata *meta = bm->mgmtData;
+    BM_LinkedList *pageTable = meta->pageTable;
     BM_LinkedListElement *el = pageTable->head;
 	for (uint32_t i = 0; i < bm->numPages; ++i) {
 	    if (el == pageTable->sentinel) { break; }
 	    BM_PageHandle *page = (BM_PageHandle *) el->data;
-		if (page->dirtyFlag == 1){
+		if (page->dirtyFlag == 1) {
 			forcePage(bm, page);
 			el = el->next;
 		}
@@ -160,10 +151,11 @@ RC pinPage (
 
 	// check if page number exists
     BM_LinkedListElement *el;
+    BM_PageHandle *handle;
     void *result = NULL;
     if (HashMap_get(meta->pageMapping, pageNum, &result)) {
         el = (BM_LinkedListElement *) result;
-        BM_PageHandle *handle = (BM_PageHandle *) el->data;
+        handle = (BM_PageHandle *) el->data;
         handle->refCounter += 1;
         stats->fixCounts[pageNum] += 1;
 
@@ -183,13 +175,18 @@ RC pinPage (
 	    HashMap_put(meta->pageMapping, pageNum, el);
 
         meta->strategyHandler->insert(bm, el);
-        BM_PageHandle *handle = (BM_PageHandle *) el->data;
+        handle = (BM_PageHandle *) el->data;
 	    readBlock(pageNum, storage, handle->data);
 	}
 
 	// fetch page from memory
 	meta->refCounter += 1; //increment buf mgr ref counter for thread use
     meta->strategyHandler->use(bm, el);
+
+    // copy the result to caller variable
+    if (page != NULL) {
+        memcpy(page, handle, sizeof(BM_PageHandle));
+    }
 
 	return RC_OK;
 }
