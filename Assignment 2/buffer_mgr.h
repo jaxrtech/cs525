@@ -43,12 +43,10 @@ typedef struct BM_BufferPool {
 
 typedef struct BM_PageHandle {
 	int refCounter;	
-	int dirtyFlag;
+	bool dirtyFlag;
 	PageNumber pageNum;
 	int bufferPageNum;
 	char *data;
-	struct BM_PageHandle *next;
-	struct BM_PageHandle *prev;
 } BM_PageHandle;
 
 typedef struct BP_Statistics {

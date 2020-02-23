@@ -113,7 +113,7 @@ RC forceFlushPool(BM_BufferPool *const bm){
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
     BP_Metadata *meta = bm->mgmtData;
     if (page) {
-        page->dirtyFlag = 1;
+        page->dirtyFlag = TRUE;
         meta->stats->dirtyFlags[page->pageNum] = TRUE;
 		return RC_OK;
 	}
@@ -170,17 +170,18 @@ RC pinPage (
 	        fprintf(stderr, "pinPage: failed to pin page, evicted but list was full");
 	        exit(1);
 	    }
+        meta->inUse += 1;
 
-	    // update page number to element mapping
-	    HashMap_put(meta->pageMapping, pageNum, el);
+        // update page number to element mapping
+        HashMap_put(meta->pageMapping, pageNum, el);
 
         meta->strategyHandler->insert(bm, el);
         handle = (BM_PageHandle *) el->data;
-	    readBlock(pageNum, storage, handle->data);
-	}
+        readBlock(pageNum, storage, handle->data);
+    }
 
 	// fetch page from memory
-	meta->refCounter += 1; //increment buf mgr ref counter for thread use
+    meta->refCounter += 1; //increment buf mgr ref counter for thread use
     meta->strategyHandler->use(bm, el);
 
     // copy the result to caller variable
@@ -249,11 +250,11 @@ RC evict(BM_BufferPool *bm){
     }
 
     clearStats(bm, page->bufferPageNum);
-    page->data = NULL;
-    page->pageNum = 0;
+    memset(page->data, 0xdeadbeef, PAGE_SIZE);
+    page->pageNum = -1;
     meta->inUse -= 1;
 
-    LinkedList_delete(pageTable, el);
+    LinkedList_remove(pageTable, el);
     HashMap_remove(meta->pageMapping, pageNum, NULL);
 
 	return RC_OK;

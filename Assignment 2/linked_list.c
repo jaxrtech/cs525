@@ -40,6 +40,8 @@ BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self) {
         return NULL;
     }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
+    el->prev = NULL;
+    el->next = NULL;
     return el;
 }
 
@@ -62,13 +64,12 @@ bool LinkedList_isEmpty(BM_LinkedList *list) {
            && sentinel->prev == sentinel;
 }
 
-bool LinkedList_delete(BM_LinkedList *self, BM_LinkedListElement *el) {
+bool LinkedList_remove(BM_LinkedList *self, BM_LinkedListElement *el) {
     if (el == self->sentinel) {
         return FALSE;
     }
     LinkedList_unlink(el);
     Freespace_unmark(self->freespace, el->index);
-    memset(el->data, 0, self->elementSize);
     return TRUE;
 }
 

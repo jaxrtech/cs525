@@ -37,18 +37,18 @@ bool Freespace_markNext(FS_Freespace *self, uint32_t *result) {
     uint32_t *bitmap = self->bitmap;
 
     for (uint32_t i = 0; i < chunkCount; i++) {
-        uint32_t chunk = ~bitmap[i];
-        if (chunk == 0) { continue; }
+        uint32_t chunkInv = ~bitmap[i];
+        if (chunkInv == 0) { continue; }
 
-        uint8_t b = lsb(chunk);
+        uint8_t b = lsb(chunkInv);
         int blk = (int)
               ((i * FS_ELEMENTS_PER_CHUNK)
             + ((FS_ELEMENTS_PER_CHUNK - 1) - b));
 
-        if (blk > elementCount) {
+        if (blk >= elementCount) {
             return false;
         }
-        bitmap[i] = chunk & (1u << b);
+        bitmap[i] = ~chunkInv | (1u << b);
         *result = blk;
         return true;
     }
@@ -65,8 +65,9 @@ bool Freespace_unmark(FS_Freespace *self, uint32_t elementIndex) {
 
     uint32_t i = (elementIndex / FS_ELEMENTS_PER_CHUNK);
     uint32_t b = (elementIndex % FS_ELEMENTS_PER_CHUNK);
+    uint32_t off = (FS_ELEMENTS_PER_CHUNK - 1) - b;
     uint32_t chunk = bitmap[i];
-    bitmap[i] = chunk & ~(1u << b);
+    bitmap[i] = chunk & ~(1u << off);
     return TRUE;
 }
 
