@@ -1,11 +1,16 @@
 #ifndef BUFFER_MANAGER_H
 #define BUFFER_MANAGER_H
 
+#include <stdint.h>
+
 // Include return codes and methods for logging errors
 #include "dberror.h"
 
 // Include bool DT
 #include "dt.h"
+
+// Include storage manager types
+#include "storage_mgr.h"
 
 // Replacement Strategies
 typedef enum ReplacementStrategy {
@@ -33,19 +38,32 @@ typedef struct BM_PageHandle {
 	int refCounter;	
 	int dirtyFlag;
 	PageNumber pageNum;
+	int bufferBlkNum;
 	char *data;
 	struct BM_PageHandle *next;
 	struct BM_PageHandle *prev;
 } BM_PageHandle;
 
+typedef struct BP_Statistics {
+    PageNumber *frameContents;
+    bool *dirtyFlags;
+    int *fixCounts;
+    int diskReads;
+    int diskWrites;
+} BP_Statistics;
+
 typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
 {
-	BM_PageHandle *pageTable; //array of pointers to a list of Pages and indices (offset used in FIFO)
-	int clockCount;			  //stores current position of clock in buffer table
-	int refCounter;			  //no. threads accessing PAGE DIR (increment before accessing)
-	int inUse;
-	int *sortOrder;
-	SM_FileHandle *storageManager;
+    SM_FileHandle *storageManager;
+    BM_PageHandle *pageTable; // array of pointers to a list of Pages and indices (offset used in FIFO)
+    char **blocks;            // memory pool for blocks
+    uint32_t *freeBitmap;     // freespace bitmap for memory pool
+    uint32_t freeBitmapLength;    // number of chunks (uint32_t) in the freespace bitmap
+    int clockCount;			  // stores current position of clock in buffer table
+    int refCounter;			  // no. threads accessing PAGE DIR (increment before accessing)
+    int *sortOrder;
+    int inUse;
+    BP_Statistics *stats;
 } BP_Metadata;
 
 // convenience macros
@@ -75,10 +93,5 @@ bool *getDirtyFlags (BM_BufferPool *const bm);
 int *getFixCounts (BM_BufferPool *const bm);
 int getNumReadIO (BM_BufferPool *const bm);
 int getNumWriteIO (BM_BufferPool *const bm);
-
-//Helper Functions
-BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page);
-RC evict(BM_BufferPool *const bm);
-void updatePageTable(BM_BufferPool *const bm, BM_PageHandle *pageTable); //call this on pin/unpin
 
 #endif
