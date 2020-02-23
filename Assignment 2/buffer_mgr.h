@@ -11,6 +11,12 @@
 
 // Include storage manager types
 #include "storage_mgr.h"
+#include "freespace.h"
+#include "linked_list.h"
+
+#define BM_REPLACEMENT_STRAT_COUNT (5)
+
+struct RS_StrategyHandler;
 
 // Replacement Strategies
 typedef enum ReplacementStrategy {
@@ -31,7 +37,7 @@ typedef struct BM_BufferPool {
 	ReplacementStrategy strategy;
 	void *stratData;
 	void *mgmtData; // use this one to store the bookkeeping info your buffer
-	// manager needs for a buffer pool
+	                // manager needs for a buffer pool
 } BM_BufferPool;
 
 typedef struct BM_PageHandle {
@@ -55,13 +61,12 @@ typedef struct BP_Statistics {
 typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
 {
     SM_FileHandle *storageManager;
-    BM_PageHandle *pageTable; // array of pointers to a list of Pages and indices (offset used in FIFO)
+    BM_LinkedList *pageTable; // linked list of pages
+    struct RS_StrategyHandler *strategyHandler;  // use forward declaration
     char **blocks;            // memory pool for blocks
-    uint32_t *freeBitmap;     // freespace bitmap for memory pool
-    uint32_t freeBitmapLength;    // number of chunks (uint32_t) in the freespace bitmap
+    FS_Freespace *freespace;
     int clockCount;			  // stores current position of clock in buffer table
     int refCounter;			  // no. threads accessing PAGE DIR (increment before accessing)
-    int *sortOrder;
     int inUse;
     BP_Statistics *stats;
 } BP_Metadata;

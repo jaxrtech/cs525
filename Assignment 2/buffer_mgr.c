@@ -13,8 +13,7 @@
 #include "dberror.h"
 #include "storage_mgr.h"
 #include "buffer_mgr.h"
-
-#define PAGES_PER_FREECHUNK (sizeof(uint32_t) * 8)
+#include "replacement_strategy.h"
 
 //Helper Functions
 static BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page);
@@ -38,7 +37,6 @@ RC initBufferPool(
 	BP_Metadata *meta = NULL;
 	BP_Statistics *stats = NULL;
     SM_FileHandle *storageHandle = NULL;
-	BM_PageHandle *node = NULL;
 
     //Store BM_BufferPool Attributes
     bm->pageFile = pageFileName;
@@ -48,10 +46,11 @@ RC initBufferPool(
 
     //set up bookkeeping data
     meta = malloc(sizeof(BP_Metadata));
+    bm->mgmtData = meta;
+    meta->strategyHandler = &RS_StrategyHandlerImpl[strategy];
     meta->clockCount = 0; //for clock replacement
     meta->refCounter = 0; //nothing using buffer yet
-    meta->inUse = 0;		//no pages in use
-    bm->mgmtData = meta; //link struct
+    meta->inUse = 0;	  //no pages in use
 
     stats = malloc(sizeof(BP_Statistics));
     stats->diskReads = 0;
@@ -63,13 +62,7 @@ RC initBufferPool(
 
     // allocate memory pool
     meta->blocks = calloc(numPages, PAGE_SIZE);
-
-    // each chunk in the freespace bitmap is 32-bits
-    // the size of the freespace bitmap is therefore:
-    //    ciel(  (# of pages) / (# of bytes in a chunk) * (# of bits in a byte) )
-    size_t numChunks = (numPages + PAGES_PER_FREECHUNK) / PAGES_PER_FREECHUNK;
-    meta->freeBitmapLength = numChunks;
-    meta->freeBitmap = calloc(numPages / PAGES_PER_FREECHUNK, sizeof(uint32_t));
+    meta->freespace = Freespace_create(numPages);
 
     //open the storage manager
     storageHandle = malloc(sizeof(SM_FileHandle));
@@ -82,29 +75,7 @@ RC initBufferPool(
     meta->storageManager = storageHandle;
 
     //set up pagetable
-    node = malloc(sizeof(BM_PageHandle));
-	node->refCounter = 0;
-	node->dirtyFlag = 0;
-	node->pageNum = -1;
-	node->data = NULL;
-	node->next = NULL;
-	node->prev = NULL;
-
-    int i;
-    meta->pageTable = node;
-
-    for (i = 0; i < numPages-1; ++i){
-    	BM_PageHandle *newnode = malloc(sizeof(BM_PageHandle));
-    	node->refCounter = 0;
-		node->dirtyFlag = 0;
-		node->pageNum = 0;
-		node->data = NULL;
-    	node->next = newnode;
-    	newnode->prev = node;
-    	node = node->next;
-    }
-    node->next = meta->pageTable; //close doubly linked list
-    node->next->prev = node;
+    meta->pageTable = LinkedList_create(numPages, sizeof(BM_PageHandle));
 
 	return RC_OK;
 }
@@ -133,16 +104,16 @@ static void freeBufferPageTable(const BM_BufferPool *bm) {
 }
 
 RC forceFlushPool(BM_BufferPool *const bm){
-	//forcepage() on all pages in buffer
 	BP_Metadata *bmdata = bm->mgmtData;
-	BM_PageHandle *node = bmdata->pageTable;
-	int i;
-	for (i = 0; i < bm->numPages; ++i){
-		if (node->dirtyFlag == 1){
+	BM_PageHandle *start = (BM_PageHandle *)&bmdata->pageTable->elementsDataBuffer;
+	BM_PageHandle *end = start + bm->numPages;
+
+	for (BM_PageHandle *node = start; node < end; ++node) {
+		if (node->dirtyFlag == 1) {
 			forcePage(bm, node);
-			node = node->next;
 		}
 	}
+
 	return RC_OK;
 }
 
@@ -262,8 +233,6 @@ BM_PageHandle *checkPool(BM_BufferPool *const bm, BM_PageHandle *page){
 }
 
 RC evict(BM_BufferPool *const bm){
-	//check page in buffer handled by calling function
-	//pages will be sorted based on update function so eviction is standard unless it is clock 
 	BP_Metadata *bmdata = bm->mgmtData;
 	BM_PageHandle *toevict = bmdata->pageTable;
 	int i;
@@ -330,58 +299,4 @@ void updatePageTable(BM_BufferPool *const bm, BM_PageHandle* pageTable){
 	return;
 }
 
-// Use de Bruijn multiplication to find next available bit in the free-space bitmap
-// see http://supertech.csail.mit.edu/papers/debruijn.pdf, https://stackoverflow.com/a/31718095/809572
-//
-uint8_t lsb(uint32_t v) {
-    static const int MultiplyDeBruijnBitPosition[32] = {
-        0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
-        8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
-    };
 
-    v |= v >> 1u; // first round down to one less than a power of 2
-    v |= v >> 2u;
-    v |= v >> 4u;
-    v |= v >> 8u;
-    v |= v >> 16u;
-
-    return MultiplyDeBruijnBitPosition[(uint32_t)(v * 0x07C4ACDDU) >> 27u];
-}
-
-RC freeBufferPage(BM_BufferPool *const bm, int blockNum) {
-    BP_Metadata *meta = bm->mgmtData;
-    const size_t len = meta->freeBitmapLength;
-    uint32_t *freespaceBitmap = meta->freeBitmap;
-
-    if (blockNum > bm->numPages) {
-        return RC_PAGE_NOT_IN_BUFFER;
-    }
-
-    uint32_t i = (blockNum / PAGES_PER_FREECHUNK);
-    uint32_t b = (blockNum % PAGES_PER_FREECHUNK);
-    uint32_t chunk = freespaceBitmap[i];
-    freespaceBitmap[i] = chunk & ~(1u << b);
-
-    return RC_OK;
-}
-
-int markNextFreeBufferPage(BM_BufferPool *const bm) {
-    BP_Metadata *meta = bm->mgmtData;
-    const size_t len = meta->freeBitmapLength;
-    uint32_t *freespaceBitmap = meta->freeBitmap;
-
-    for (size_t i = 0; i < len; i++) {
-        uint32_t chunk = ~freespaceBitmap[i];
-        if (chunk == 0) { continue; }
-
-        uint8_t b = lsb(chunk);
-        int blk = (int) ((i * PAGES_PER_FREECHUNK) + (31 - b));
-        if (blk > bm->numPages) {
-            return -1;
-        }
-        freespaceBitmap[i] = chunk & (1u << b);
-        return blk;
-    }
-
-    return -1;
-}
