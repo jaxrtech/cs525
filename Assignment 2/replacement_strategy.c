@@ -18,7 +18,7 @@ static void RS_FIFO_use(
 static BM_LinkedListElement* RS_FIFO_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
-    return meta->pageDescriptors->tail;
+    return meta->pageDescriptors->head;
 }
 
 //

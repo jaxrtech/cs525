@@ -49,13 +49,24 @@ BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self) {
     return el;
 }
 
-void LinkedList_unlink(BM_LinkedListElement *el) {
+void LinkedList_unlink(
+        BM_LinkedList *list,
+        BM_LinkedListElement *el) {
+
     if (el->prev) {
         el->prev->next = el->next;
     }
 
     if (el->next) {
         el->next->prev = el->prev;
+    }
+
+    if (list->head == el) {
+        list->head = el->next;
+    }
+
+    if (list->tail == el) {
+        list->tail = el->prev;
     }
 
     el->prev = NULL;
@@ -72,7 +83,7 @@ bool LinkedList_remove(BM_LinkedList *self, BM_LinkedListElement *el) {
     if (el == self->sentinel) {
         return FALSE;
     }
-    LinkedList_unlink(el);
+    LinkedList_unlink(self, el);
     Freespace_unmark(self->freespace, el->index);
     return TRUE;
 }
@@ -97,7 +108,7 @@ void LinkedList_insertAfter(
         BM_LinkedListElement *item,
         BM_LinkedListElement *reference)
 {
-    LinkedList_unlink(item);
+    LinkedList_unlink(list, item);
     item->prev = reference;
     item->next = reference->next;
 

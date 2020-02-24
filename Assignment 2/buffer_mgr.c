@@ -218,11 +218,6 @@ RC pinPage (
     meta->refCounter += 1; //increment buf mgr ref counter for thread use
     meta->strategyHandler->use(bm, el);
 
-    // copy the result to caller variable
-    if (page != NULL) {
-        memcpy(page, pd, sizeof(BM_PageHandle));
-    }
-
 	return RC_OK;
 }
 

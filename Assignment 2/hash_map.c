@@ -39,23 +39,40 @@ bool HashMap_get(HS_HashMap *self, uint32_t key, void **data) {
 
 void HashMap_put(HS_HashMap *self, uint32_t key, void *data) {
     uint32_t i = hash(key) % self->numBuckets;
-    bool isRoot = true;
     HS_Node *node = &self->buckets[i];
+
+    bool isRoot =
+            (node->present && node->key == key)
+            || (!node->present);
+
+    if (isRoot) {
+        node->present = TRUE;
+        node->key = key;
+        node->data = data;
+        return;
+    }
+
+    // Continue to iterate the linked list, unless we find a matching key
+    // or we hit the end
     HS_Node *lookahead = node->next;
-    while (lookahead != NULL) {
-        isRoot = false;
+    while (node->present && lookahead != NULL) {
         node = lookahead;
+        if (node->present && node->key == key) {
+            node->data = data;
+            return;
+        }
         lookahead = node->next;
     }
 
-    if (!isRoot) {
-        node = malloc(sizeof(HS_Node));
-    }
+    // We hit the end and did not find the key
+    // Create a new one at the end
+    HS_Node *last = malloc(sizeof(HS_Node));
+    node->next = last;
 
-    node->present = TRUE;
-    node->key = key;
-    node->data = data;
-    node->next = NULL;
+    last->present = TRUE;
+    last->key = key;
+    last->data = data;
+    last->next = NULL;
 }
 
 bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data) {
@@ -69,7 +86,7 @@ bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data) {
     HS_Node *prev = NULL;
     HS_Node *node = &self->buckets[i];
     HS_Node *lookahead = node->next;
-    while (lookahead != NULL) {
+    do {
         if (node->present && node->key == key) {
             found = true;
             break;
@@ -78,20 +95,32 @@ bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data) {
         prev = node;
         node = lookahead;
         lookahead = node->next;
-    }
+    } while (lookahead != NULL);
 
     if (!found) {
         return false;
     }
 
-    node->present = FALSE;
-    if (!isRoot) {
-        free(node);
-        prev->next = NULL;
-    }
-
     if (data != NULL) {
         *data = node->data;
+    }
+
+    node->present = FALSE;
+    if (isRoot) {
+        HS_Node *next = node->next;
+        if (next != NULL) {
+            // Copy the next value since the root is persistent
+            *node = *next;
+            free(next);
+        } else {
+            node->present = FALSE;
+            node->next = NULL;
+            node->data = NULL;
+            node->key = -1;
+        }
+    } else {
+        prev->next = node->next;
+        free(node);
     }
 
     return true;
