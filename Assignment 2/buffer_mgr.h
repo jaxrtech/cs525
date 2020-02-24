@@ -43,22 +43,28 @@ typedef struct BM_BufferPool {
 
 typedef struct BM_PageHandle {
 	PageNumber pageNum;
-	int bufferPageNum;
 	char *buffer;
 } BM_PageHandle;
 
+typedef struct BP_PageDescriptor {
+    BM_PageHandle handle;
+    int fixCount;
+    bool dirty;
+} BP_PageDescriptor;
+
 typedef struct BP_Statistics {
-    PageNumber *frameContents;
-    bool *dirtyFlags;
-    int *fixCounts;
     int diskReads;
     int diskWrites;
+
+    PageNumber *lastFrameContents;
+    bool *lastDirtyFlags;
+    int *lastFixCounts;
 } BP_Statistics;
 
 typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
 {
     SM_FileHandle *storageManager;
-    BM_LinkedList *pageTable; // linked list of pages
+    BM_LinkedList *pageDescriptors; // linked list of pages
     HS_HashMap *pageMapping;  // hash map of page number to page handles
     struct RS_StrategyHandler *strategyHandler;  // use forward declaration
     char *pageBuffer;            // contiguous memory pool for blocks

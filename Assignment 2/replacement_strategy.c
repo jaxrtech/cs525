@@ -5,7 +5,7 @@ static void RS_FIFO_insert(
         BM_LinkedListElement *el)
 {
     BP_Metadata *meta = pool->mgmtData;
-    LinkedList_prepend(meta->pageTable, el);
+    LinkedList_prepend(meta->pageDescriptors, el);
 }
 
 static void RS_FIFO_use(
@@ -18,7 +18,7 @@ static void RS_FIFO_use(
 static BM_LinkedListElement* RS_FIFO_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
-    return meta->pageTable->head;
+    return meta->pageDescriptors->head;
 }
 
 //
@@ -33,7 +33,7 @@ static void RS_LRU_insert(
         BM_LinkedListElement *el)
 {
     BP_Metadata *meta = pool->mgmtData;
-    LinkedList_prepend(meta->pageTable, el);
+    LinkedList_prepend(meta->pageDescriptors, el);
 }
 
 static void RS_LRU_use(
@@ -46,7 +46,7 @@ static void RS_LRU_use(
 static BM_LinkedListElement* RS_LRU_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
-    return meta->pageTable->head;
+    return meta->pageDescriptors->head;
 }
 
 //

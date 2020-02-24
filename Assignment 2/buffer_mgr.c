@@ -4,10 +4,6 @@
 #include <stdlib.h>
 
 /* linux specific */
-#include <unistd.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <stdbool.h>
 #include <inttypes.h>
 
@@ -28,6 +24,8 @@ static bool resolveByPageNum(
         BM_BufferPool *bm,
         PageNumber num,
         BM_LinkedListElement **el_out);
+
+#define BM_DEREF_ELEMENT(_EL) ((BP_PageDescriptor *) (_EL)->data)
 
 //
 
@@ -61,21 +59,22 @@ RC initBufferPool(
     stats = malloc(sizeof(BP_Statistics));
     stats->diskReads = 0;
     stats->diskWrites = 0;
-    stats->frameContents = calloc(numPages, sizeof(PageNumber));
-    stats->dirtyFlags = calloc(numPages, sizeof(bool));
-    stats->fixCounts = calloc(numPages, sizeof(int));
+    stats->lastFrameContents = calloc(numPages, sizeof(PageNumber));
+    stats->lastDirtyFlags = calloc(numPages, sizeof(bool));
+    stats->lastFixCounts = calloc(numPages, sizeof(int));
     meta->stats = stats;
 
     // set up pagetable
-    meta->pageTable = LinkedList_create(numPages, sizeof(BM_PageHandle));
+    meta->pageDescriptors = LinkedList_create(numPages, sizeof(BP_PageDescriptor));
 
     // allocate memory pool
     meta->pageBuffer = calloc(numPages, PAGE_SIZE);
     meta->freespace = Freespace_create(numPages);
     for (uint32_t i = 0; i < numPages; i++) {
-        BM_LinkedListElement *el = &meta->pageTable->elementsMetaBuffer[i];
-        BM_PageHandle *handle = (BM_PageHandle *) el->data;
-        handle->buffer = meta->pageBuffer + (i * PAGE_SIZE);
+        BM_LinkedListElement *el = &meta->pageDescriptors->elementsMetaBuffer[i];
+        BP_PageDescriptor *pd = (BP_PageDescriptor *) el->data;
+        pd->handle.pageNum = -1;
+        pd->handle.buffer = meta->pageBuffer + (i * PAGE_SIZE);
     }
 
     // allocate hash map
@@ -108,13 +107,13 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
 RC forceFlushPool(BM_BufferPool *const bm){
 	BP_Metadata *meta = bm->mgmtData;
 	BP_Statistics *stats = meta->stats;
-    BM_LinkedList *pageTable = meta->pageTable;
+    BM_LinkedList *pageTable = meta->pageDescriptors;
     BM_LinkedListElement *el = pageTable->head;
 	for (uint32_t i = 0; i < bm->numPages; ++i) {
 	    if (el == pageTable->sentinel) { break; }
-	    BM_PageHandle *page = (BM_PageHandle *) el->data;
-		if (stats->dirtyFlags[el->index]) {
-			forcePage(bm, page);
+        BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+		if (pd->dirty) {
+			forcePage(bm, &pd->handle);
 			el = el->next;
 		}
 	}
@@ -129,7 +128,8 @@ RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
         return RC_PAGE_NOT_IN_BUFFER;
     }
 
-    meta->stats->dirtyFlags[el->index] = TRUE;
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+    pd->dirty = TRUE;
     printf("DEBUG: markDirty: pg@0x%08" PRIxPTR
         " { pageNum = %d }\n",
            (uintptr_t) page, page->pageNum);
@@ -144,8 +144,9 @@ RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page) {
         return RC_PAGE_NOT_IN_BUFFER;
     }
 
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
     meta->refCounter -= 1; //decrement buf mgr ref counter for thread use
-    meta->stats->fixCounts[el->index] -= 1;
+    pd->fixCount -= 1;
     return RC_OK;
 }
 
@@ -156,16 +157,18 @@ RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) {
 	if (!resolveByHandle(bm, page, &el)) {
         return RC_PAGE_NOT_IN_BUFFER;
     }
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
 
-	printf("DEBUG: forcePage: pg@0x%08" PRIxPTR
+    printf("DEBUG: forcePage: pg@0x%08" PRIxPTR
 	" { pageNum = %d, buf = 0x%08" PRIxPTR " }\n",
            (uintptr_t) page, page->pageNum, (uintptr_t) page->buffer);
 
-	// ensure that we have enough pages before writing
-	// recall that `pageNum` is zero-indexed
-	ensureCapacity(page->pageNum + 1, storage);
-	writeBlock(page->pageNum, storage, page->buffer);
-	meta->stats->dirtyFlags[el->index] = false;
+    // ensure that we have enough pages before writing
+    // recall that `pageNum` is zero-indexed
+    ensureCapacity(page->pageNum + 1, storage);
+    writeBlock(page->pageNum, storage, page->buffer);
+    pd->dirty = false;
+    meta->stats->diskWrites += 1;
 
 	return RC_OK;
 }
@@ -176,16 +179,16 @@ RC pinPage (
         const PageNumber pageNum)
 {
 	BP_Metadata *meta = bm->mgmtData;
-    BM_LinkedList *pageTable = meta->pageTable;
+    BM_LinkedList *pageTable = meta->pageDescriptors;
 	SM_FileHandle *storage = meta->storageManager;
 	BP_Statistics *stats = meta->stats;
 
 	// check if page number exists
     BM_LinkedListElement *el;
-    BM_PageHandle *handle;
+    BP_PageDescriptor *pd;
     if (resolveByPageNum(bm, pageNum, &el)) {
-        handle = (BM_PageHandle *) el->data;
-        stats->fixCounts[el->index] += 1;
+        pd = BM_DEREF_ELEMENT(el);
+        pd->fixCount += 1;
 
     } else {
         if (meta->inUse == bm->numPages) { //evict if buffer full
@@ -199,16 +202,16 @@ RC pinPage (
 	        exit(1);
 	    }
         meta->inUse += 1;
-        handle = (BM_PageHandle *) el->data;
-        handle->pageNum = pageNum;
-        stats->frameContents[el->index] = pageNum;
-        stats->fixCounts[el->index] = 0;
-        stats->dirtyFlags[el->index] = false;
+        pd = BM_DEREF_ELEMENT(el);
+        pd->handle.pageNum = pageNum;
+        pd->fixCount = 1;
+        pd->dirty = false;
 
         // update page number to element mapping
         HashMap_put(meta->pageMapping, pageNum, el);
         meta->strategyHandler->insert(bm, el);
-        readBlock(pageNum, storage, handle->buffer);
+        readBlock(pageNum, storage, pd->handle.buffer);
+        meta->stats->diskReads += 1;
     }
 
 	// fetch page from memory
@@ -217,7 +220,7 @@ RC pinPage (
 
     // copy the result to caller variable
     if (page != NULL) {
-        memcpy(page, handle, sizeof(BM_PageHandle));
+        memcpy(page, pd, sizeof(BM_PageHandle));
     }
 
 	return RC_OK;
@@ -225,22 +228,101 @@ RC pinPage (
 
 
 // Statistics Interface
-PageNumber *getFrameContents (BM_BufferPool *const bm){
+PageNumber *getFrameContents (BM_BufferPool *const bm) {
     BP_Metadata *meta = bm->mgmtData;
     BP_Statistics *stats = meta->stats;
-	return stats->frameContents;
+
+    // Repopulate from linked list
+    BM_LinkedList *descriptors = meta->pageDescriptors;
+    BM_LinkedListElement *el = descriptors->sentinel->next;
+
+    PageNumber *frameContents = stats->lastFrameContents;
+    memset(frameContents, 0, sizeof(PageNumber) * bm->numPages);
+
+    bool endFlag = false;
+    for (uint32_t i = 0; i < bm->numPages; ++i) {
+        if (!endFlag && el == descriptors->sentinel) {
+            // Mark flag for when we pass the end of actually used pages
+            endFlag = true;
+        }
+
+        if (!endFlag) {
+            BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+            frameContents[i] = pd->handle.pageNum;
+            el = el->next;
+
+        } else {
+            // Fill the rest of the buffer with -1 for the page number
+            // to represent an unused page
+            frameContents[i] = -1;
+        }
+    }
+    
+    return frameContents;
 }
 
 bool *getDirtyFlags (BM_BufferPool *const bm){
     BP_Metadata *meta = bm->mgmtData;
     BP_Statistics *stats = meta->stats;
-    return stats->dirtyFlags;
+
+    // Repopulate from linked list
+    BM_LinkedList *descriptors = meta->pageDescriptors;
+    BM_LinkedListElement *el = descriptors->sentinel->next;
+
+    bool *dirtyFlags = stats->lastDirtyFlags;
+    memset(dirtyFlags, 0, sizeof(bool) * bm->numPages);
+
+    bool endFlag = false;
+    for (uint32_t i = 0; i < bm->numPages; ++i) {
+        if (!endFlag && el == descriptors->sentinel) {
+            // Mark flag for when we pass the end of actually used pages
+            endFlag = true;
+        }
+
+        if (!endFlag) {
+            BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+            dirtyFlags[i] = pd->dirty;
+            el = el->next;
+
+        } else {
+            // Fill the rest of the buffer with `false` by default
+            dirtyFlags[i] = false;
+        }
+    }
+
+    return dirtyFlags;
 }
 
 int *getFixCounts (BM_BufferPool *const bm){
     BP_Metadata *meta = bm->mgmtData;
     BP_Statistics *stats = meta->stats;
-    return stats->fixCounts;
+
+    // Repopulate from linked list
+    BM_LinkedList *descriptors = meta->pageDescriptors;
+    BM_LinkedListElement *el = descriptors->sentinel->next;
+
+    int *fixCounts = stats->lastFixCounts;
+    memset(fixCounts, 0, sizeof(int) * bm->numPages);
+
+    bool endFlag = false;
+    for (uint32_t i = 0; i < bm->numPages; ++i) {
+        if (!endFlag && el == descriptors->sentinel) {
+            // Mark flag for when we pass the end of actually used pages
+            endFlag = true;
+        }
+
+        if (!endFlag) {
+            BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+            fixCounts[i] = pd->fixCount;
+            el = el->next;
+
+        } else {
+            // Fill the rest of the buffer with 0 for unused pages
+            fixCounts[i] = 0;
+        }
+    }
+
+    return fixCounts;
 }
 
 int getNumReadIO (BM_BufferPool *const bm){
@@ -257,29 +339,29 @@ int getNumWriteIO (BM_BufferPool *const bm){
 
 
 /*		HELPER FUNCTIONS		*/
-RC evict(BM_BufferPool *bm){
+RC evict(BM_BufferPool *bm) {
 	BP_Metadata *meta = bm->mgmtData;
     BP_Statistics *stats = meta->stats;
-    BM_LinkedList *pageTable = meta->pageTable;
+    BM_LinkedList *pageTable = meta->pageDescriptors;
     BM_LinkedListElement *el = meta->strategyHandler->elect(bm);
     if (el == NULL) {
         return RC_OK;
     }
-    BM_PageHandle *page = (BM_PageHandle *) el->data;
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+    uint32_t pageNum = pd->handle.pageNum;
+    
     printf("DEBUG: evict: el@0x%08" PRIxPTR
         " { pageNum = %d, index = %d, data = 0x%08" PRIxPTR " }\n",
-        (uintptr_t) el, page->pageNum, el->index, (uintptr_t) el->data);
+           (uintptr_t) el, pageNum, el->index, (uintptr_t) el->data);
 
-    uint32_t pageNum = page->pageNum;
-    if (meta->stats->dirtyFlags[el->index]) {
-        forcePage(bm, page);
+    if (pd->dirty) {
+        forcePage(bm, &pd->handle);
     }
 
-    stats->frameContents[el->index] = 0;
-    stats->dirtyFlags[el->index] = 0;
-    stats->fixCounts[el->index] = 0;
-    memset(page->buffer, 0, PAGE_SIZE);
-    page->pageNum = -1;
+    pd->dirty = false;
+    pd->fixCount = 0;
+    pd->handle.pageNum = -1;
+    memset(pd->handle.buffer, 0, PAGE_SIZE);
     meta->inUse -= 1;
 
     LinkedList_remove(pageTable, el);
