@@ -101,7 +101,7 @@ static void RS_LRU_insert(
         BM_LinkedListElement *el)
 {
     BP_Metadata *meta = pool->mgmtData;
-    LinkedList_prepend(meta->pageDescriptors, el);
+    LinkedList_append(meta->pageDescriptors, el);
 }
 
 static void RS_LRU_use(
@@ -114,10 +114,61 @@ static void RS_LRU_use(
 static BM_LinkedListElement* RS_LRU_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
-    return meta->pageDescriptors->head;
+    RS_FIFO_Metadata *rs = meta->strategyMetadata;
+
+    BM_LinkedList *list = meta->pageDescriptors;
+    BM_LinkedListElement *el = rs->next;
+    if (el == NULL) {
+        el = list->head;
+    }
+
+    bool didFail = false;
+    BM_LinkedListElement *original = el;
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+    while (pd && pd->fixCount > 0) {
+        if (didFail && el == original) {
+            // failed to find a page to evict, all in use
+            return NULL;
+        }
+
+        if (el == list->sentinel) {
+            // if we hit the sentinel, continue to wrap around
+            el = el->next;
+            continue;
+        }
+
+        // cannot evict in-use page, try the next one
+        el = el->next;
+        if (el) {
+            pd = BM_DEREF_ELEMENT(el);
+        }
+
+        didFail = true;
+    }
+
+    if (!el) {
+        fprintf(stderr,
+                "RS_FIFO_elect: expected `el` to not be null at this point\n");
+        exit(1);
+    }
+
+    BM_LinkedListElement *next = el->next;
+    if (next == list->sentinel) {
+        // we've reached the end, signal to just get the `head` next time
+        next = NULL;
+    }
+    rs->next = next;
+    printf("DEBUG: RS_FIFO_elect: next eviction = idx %d\n",
+           next == NULL ? -1 : next->index);
+    fflush(stdout);
+
+    return el;
 }
 
 //
+
+// TODO: Implement rest of replacement strategies
+//       since we're just using FIFO as a fallback
 
 RS_StrategyHandler
         RS_StrategyHandlerImpl[BM_REPLACEMENT_STRAT_COUNT] = {
@@ -128,14 +179,32 @@ RS_StrategyHandler
                 .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,
         },
-        [RS_CLOCK] = NULL,
-        [RS_LFU] = NULL,
         [RS_LRU] = {
                 .strategy = RS_LRU,
-                .init = RS_FIFO_init,
+                .init = RS_LRU_init,
                 .insert = RS_LRU_insert,
                 .use = RS_LRU_use,
                 .elect = RS_LRU_elect,
         },
-        [RS_LRU_K] = NULL,
+        [RS_CLOCK] = {
+                .strategy = RS_FIFO,
+                .init = RS_FIFO_init,
+                .insert = RS_FIFO_insert,
+                .use = RS_FIFO_use,
+                .elect = RS_FIFO_elect,
+        },
+        [RS_LFU] = {
+                .strategy = RS_FIFO,
+                .init = RS_FIFO_init,
+                .insert = RS_FIFO_insert,
+                .use = RS_FIFO_use,
+                .elect = RS_FIFO_elect,
+        },
+        [RS_LRU_K] = {
+                .strategy = RS_FIFO,
+                .init = RS_FIFO_init,
+                .insert = RS_FIFO_insert,
+                .use = RS_FIFO_use,
+                .elect = RS_FIFO_elect,
+        },
 };
