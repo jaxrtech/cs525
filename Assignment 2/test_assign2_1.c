@@ -81,7 +81,7 @@ createDummyPages(BM_BufferPool *bm, int num)
   int i;
   BM_PageHandle *h = MAKE_PAGE_HANDLE();
 
-  CHECK(initBufferPool(bm, "testbuffer.bin", 1, RS_FIFO, NULL));
+  CHECK(initBufferPool(bm, "testbuffer.bin", 3, RS_FIFO, NULL));
   
   for (i = 0; i < num; i++)
     {

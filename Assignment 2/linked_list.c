@@ -95,18 +95,22 @@ void LinkedList_append(
 void LinkedList_insertAfter(
         BM_LinkedList *list,
         BM_LinkedListElement *item,
-        BM_LinkedListElement *reference) {
-
+        BM_LinkedListElement *reference)
+{
     LinkedList_unlink(item);
-    reference->next->prev = item;
-    reference->prev->next = item;
     item->prev = reference;
     item->next = reference->next;
+
+    reference->next->prev = item;
+    if (reference->next == list->sentinel) {
+        list->tail = item;
+        list->head = list->sentinel->next;
+    }
     reference->next = item;
 
     if (reference == list->sentinel) {
         list->head = item;
-        list->tail = reference->prev;
+        list->tail = list->sentinel->prev;
     }
 }
 

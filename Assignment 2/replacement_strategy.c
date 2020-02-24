@@ -5,7 +5,7 @@ static void RS_FIFO_insert(
         BM_LinkedListElement *el)
 {
     BP_Metadata *meta = pool->mgmtData;
-    LinkedList_prepend(meta->pageDescriptors, el);
+    LinkedList_append(meta->pageDescriptors, el);
 }
 
 static void RS_FIFO_use(
@@ -18,7 +18,7 @@ static void RS_FIFO_use(
 static BM_LinkedListElement* RS_FIFO_elect(
         BM_BufferPool *pool) {
     BP_Metadata *meta = pool->mgmtData;
-    return meta->pageDescriptors->head;
+    return meta->pageDescriptors->tail;
 }
 
 //
