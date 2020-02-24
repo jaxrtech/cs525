@@ -15,3 +15,8 @@ add_executable(test_assign2_2
         buffer_mgr.c
         test_assign2_2.c
         freespace.c freespace.h replacement_strategy.c replacement_strategy.h hash_map.c hash_map.h)
+
+add_executable(test_linked_list
+        linked_list_tests.c
+        linked_list.c
+        freespace.c)

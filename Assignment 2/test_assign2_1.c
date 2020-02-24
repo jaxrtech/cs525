@@ -81,12 +81,13 @@ createDummyPages(BM_BufferPool *bm, int num)
   int i;
   BM_PageHandle *h = MAKE_PAGE_HANDLE();
 
-  CHECK(initBufferPool(bm, "testbuffer.bin", 3, RS_FIFO, NULL));
+  CHECK(initBufferPool(bm, "testbuffer.bin", 1, RS_FIFO, NULL));
   
   for (i = 0; i < num; i++)
     {
       CHECK(pinPage(bm, h, i));
-      sprintf(h->data, "%s-%i", "Page", h->pageNum);
+      ASSERT_EQUALS_INT(i, h->pageNum, "wrong page returned from `pinPage()`");
+      sprintf(h->buffer, "%s-%i", "Page", h->pageNum);
       CHECK(markDirty(bm, h));
       CHECK(unpinPage(bm,h));
     }
@@ -110,7 +111,7 @@ checkDummyPages(BM_BufferPool *bm, int num)
       CHECK(pinPage(bm, h, i));
 
       sprintf(expected, "%s-%i", "Page", h->pageNum);
-      ASSERT_EQUALS_STRING(expected, h->data, "reading back dummy page content");
+      ASSERT_EQUALS_STRING(expected, h->buffer, "reading back dummy page content");
 
       CHECK(unpinPage(bm,h));
     }

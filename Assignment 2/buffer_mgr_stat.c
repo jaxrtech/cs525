@@ -59,7 +59,7 @@ printPageContent (BM_PageHandle *const page)
 	printf("[Page %i]\n", page->pageNum);
 
 	for (i = 1; i <= PAGE_SIZE; i++)
-		printf("%02X%s%s", page->data[i], (i % 8) ? "" : " ", (i % 64) ? "" : "\n");
+		printf("%02X%s%s", page->buffer[i], (i % 8) ? "" : " ", (i % 64) ? "" : "\n");
 }
 
 char *
@@ -73,7 +73,7 @@ sprintPageContent (BM_PageHandle *const page)
 	pos += sprintf(message + pos, "[Page %i]\n", page->pageNum);
 
 	for (i = 1; i <= PAGE_SIZE; i++)
-		pos += sprintf(message + pos, "%02X%s%s", page->data[i], (i % 8) ? "" : " ", (i % 64) ? "" : "\n");
+		pos += sprintf(message + pos, "%02X%s%s", page->buffer[i], (i % 8) ? "" : " ", (i % 64) ? "" : "\n");
 
 	return message;
 }

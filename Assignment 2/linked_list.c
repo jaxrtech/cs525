@@ -1,6 +1,8 @@
 #include "linked_list.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <inttypes.h>
 
 BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     BM_LinkedList *list = malloc(sizeof(BM_LinkedList));
@@ -9,10 +11,6 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     list->elementsDataBuffer = calloc(count, elementSize);
     list->elementsMetaBuffer = calloc(count, sizeof(BM_LinkedListElement));
     list->freespace = Freespace_create(count);
-
-    // link the data buffers to the elements
-    BM_LinkedListElement *els = list->elementsMetaBuffer;
-    void *data = list->elementsDataBuffer;
 
     // setup sentinel head
     BM_LinkedListElement *sentinel = malloc(sizeof(BM_LinkedListElement));
@@ -25,7 +23,9 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     sentinel->next = sentinel;
     sentinel->prev = sentinel;
 
-    // setup rest of the elements
+    // setup rest of the elements and link the data buffers to the elements
+    BM_LinkedListElement *els = list->elementsMetaBuffer;
+    void *data = list->elementsDataBuffer;
     for (uint32_t i = 0; i < count; i++) {
         els[i].index = i;
         els[i].data = ((char *) data) + (elementSize * i);
@@ -40,6 +40,10 @@ BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self) {
         return NULL;
     }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
+    printf("DEBUG: LinkedList_fetch: el@0x%08" PRIxPTR
+    " { nextIndex = %d, data = 0x%08" PRIxPTR " }\n",
+           (uintptr_t) el, nextIndex, (uintptr_t) el->data);
+    fflush(stdout);
     el->prev = NULL;
     el->next = NULL;
     return el;

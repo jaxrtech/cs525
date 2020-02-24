@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 #include "dberror.h"
 #include "storage_mgr.h"
@@ -18,6 +19,15 @@
 
 //Helper Functions
 static RC evict(BM_BufferPool *bm);
+static bool resolveByHandle(
+        BM_BufferPool *bm,
+        BM_PageHandle *handle,
+        BM_LinkedListElement **el_out);
+
+static bool resolveByPageNum(
+        BM_BufferPool *bm,
+        PageNumber num,
+        BM_LinkedListElement **el_out);
 
 //
 
@@ -63,8 +73,9 @@ RC initBufferPool(
     meta->pageBuffer = calloc(numPages, PAGE_SIZE);
     meta->freespace = Freespace_create(numPages);
     for (uint32_t i = 0; i < numPages; i++) {
-        BM_PageHandle *handle = meta->pageTable->elementsMetaBuffer[i].data;
-        handle->data = meta->pageBuffer + (i * PAGE_SIZE);
+        BM_LinkedListElement *el = &meta->pageTable->elementsMetaBuffer[i];
+        BM_PageHandle *handle = (BM_PageHandle *) el->data;
+        handle->buffer = meta->pageBuffer + (i * PAGE_SIZE);
     }
 
     // allocate hash map
@@ -96,12 +107,13 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
 
 RC forceFlushPool(BM_BufferPool *const bm){
 	BP_Metadata *meta = bm->mgmtData;
+	BP_Statistics *stats = meta->stats;
     BM_LinkedList *pageTable = meta->pageTable;
     BM_LinkedListElement *el = pageTable->head;
 	for (uint32_t i = 0; i < bm->numPages; ++i) {
 	    if (el == pageTable->sentinel) { break; }
 	    BM_PageHandle *page = (BM_PageHandle *) el->data;
-		if (page->dirtyFlag == 1) {
+		if (stats->dirtyFlags[el->index]) {
 			forcePage(bm, page);
 			el = el->next;
 		}
@@ -112,30 +124,49 @@ RC forceFlushPool(BM_BufferPool *const bm){
 // Buffer Manager Interface Access Pages
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
     BP_Metadata *meta = bm->mgmtData;
-    if (page) {
-        page->dirtyFlag = TRUE;
-        meta->stats->dirtyFlags[page->pageNum] = TRUE;
-		return RC_OK;
-	}
-	return RC_PAGE_NOT_IN_BUFFER;
+    BM_LinkedListElement *el = NULL;
+    if (!resolveByHandle(bm, page, &el)) {
+        return RC_PAGE_NOT_IN_BUFFER;
+    }
+
+    meta->stats->dirtyFlags[el->index] = TRUE;
+    printf("DEBUG: markDirty: pg@0x%08" PRIxPTR
+        " { pageNum = %d }\n",
+           (uintptr_t) page, page->pageNum);
+    fflush(stdout);
+    return RC_OK;
 }
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page) {
 	BP_Metadata *meta = bm->mgmtData;
-	if (page) {
-		page->refCounter -= 1;
-        meta->refCounter -= 1; //decrement buf mgr ref counter for thread use
-		meta->stats->fixCounts[page->pageNum] -= 1;
-		return RC_OK;
-	}
-	return RC_PAGE_NOT_IN_BUFFER;
+    BM_LinkedListElement *el = NULL;
+    if (!resolveByHandle(bm, page, &el)) {
+        return RC_PAGE_NOT_IN_BUFFER;
+    }
+
+    meta->refCounter -= 1; //decrement buf mgr ref counter for thread use
+    meta->stats->fixCounts[el->index] -= 1;
+    return RC_OK;
 }
 
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) {
-    BP_Metadata *bmdata = bm->mgmtData;
-	SM_FileHandle *storage = bmdata->storageManager;
-	writeBlock(page->pageNum, storage, page->data);
-	page->dirtyFlag = 0;
+    BP_Metadata *meta = bm->mgmtData;
+	SM_FileHandle *storage = meta->storageManager;
+    BM_LinkedListElement *el = NULL;
+	if (!resolveByHandle(bm, page, &el)) {
+        return RC_PAGE_NOT_IN_BUFFER;
+    }
+
+	printf("DEBUG: forcePage: pg@0x%08" PRIxPTR
+	" { pageNum = %d, buf = 0x%08" PRIxPTR " }\n",
+           (uintptr_t) page, page->pageNum, (uintptr_t) page->buffer);
+
+	// ensure that we have enough pages before writing
+	// recall that `pageNum` is zero-indexed
+	ensureCapacity(page->pageNum + 1, storage);
+	writeBlock(page->pageNum, storage, page->buffer);
+	meta->stats->dirtyFlags[el->index] = false;
+
 	return RC_OK;
 }
 
@@ -152,12 +183,9 @@ RC pinPage (
 	// check if page number exists
     BM_LinkedListElement *el;
     BM_PageHandle *handle;
-    void *result = NULL;
-    if (HashMap_get(meta->pageMapping, pageNum, &result)) {
-        el = (BM_LinkedListElement *) result;
+    if (resolveByPageNum(bm, pageNum, &el)) {
         handle = (BM_PageHandle *) el->data;
-        handle->refCounter += 1;
-        stats->fixCounts[pageNum] += 1;
+        stats->fixCounts[el->index] += 1;
 
     } else {
         if (meta->inUse == bm->numPages) { //evict if buffer full
@@ -171,13 +199,16 @@ RC pinPage (
 	        exit(1);
 	    }
         meta->inUse += 1;
+        handle = (BM_PageHandle *) el->data;
+        handle->pageNum = pageNum;
+        stats->frameContents[el->index] = pageNum;
+        stats->fixCounts[el->index] = 0;
+        stats->dirtyFlags[el->index] = false;
 
         // update page number to element mapping
         HashMap_put(meta->pageMapping, pageNum, el);
-
         meta->strategyHandler->insert(bm, el);
-        handle = (BM_PageHandle *) el->data;
-        readBlock(pageNum, storage, handle->data);
+        readBlock(pageNum, storage, handle->buffer);
     }
 
 	// fetch page from memory
@@ -226,31 +257,28 @@ int getNumWriteIO (BM_BufferPool *const bm){
 
 
 /*		HELPER FUNCTIONS		*/
-void clearStats(BM_BufferPool *bm, uint32_t bufferPageNum) {
-    BP_Metadata *meta = bm->mgmtData;
-    BP_Statistics *stats = meta->stats;
-
-    stats->frameContents[bufferPageNum] = 0;
-    stats->dirtyFlags[bufferPageNum] = 0;
-    stats->fixCounts[bufferPageNum] = 0;
-}
-
 RC evict(BM_BufferPool *bm){
 	BP_Metadata *meta = bm->mgmtData;
+    BP_Statistics *stats = meta->stats;
     BM_LinkedList *pageTable = meta->pageTable;
     BM_LinkedListElement *el = meta->strategyHandler->elect(bm);
     if (el == NULL) {
         return RC_OK;
     }
-
     BM_PageHandle *page = (BM_PageHandle *) el->data;
+    printf("DEBUG: evict: el@0x%08" PRIxPTR
+        " { pageNum = %d, index = %d, data = 0x%08" PRIxPTR " }\n",
+        (uintptr_t) el, page->pageNum, el->index, (uintptr_t) el->data);
+
     uint32_t pageNum = page->pageNum;
-    if (page->dirtyFlag) {
+    if (meta->stats->dirtyFlags[el->index]) {
         forcePage(bm, page);
     }
 
-    clearStats(bm, page->bufferPageNum);
-    memset(page->data, 0xdeadbeef, PAGE_SIZE);
+    stats->frameContents[el->index] = 0;
+    stats->dirtyFlags[el->index] = 0;
+    stats->fixCounts[el->index] = 0;
+    memset(page->buffer, 0, PAGE_SIZE);
     page->pageNum = -1;
     meta->inUse -= 1;
 
@@ -260,4 +288,40 @@ RC evict(BM_BufferPool *bm){
 	return RC_OK;
 }
 
+static bool resolveByHandle(
+        BM_BufferPool *bm,
+        BM_PageHandle *handle,
+        BM_LinkedListElement **el_out)
+{
+    if (handle == NULL) {
+        return false;
+    }
 
+    return resolveByPageNum(bm, handle->pageNum, el_out);
+}
+
+static bool resolveByPageNum(
+        BM_BufferPool *bm,
+        PageNumber num,
+        BM_LinkedListElement **el_out)
+{
+    if (el_out) {
+        *el_out = NULL;
+    }
+
+    BP_Metadata *meta = bm->mgmtData;
+    BM_LinkedListElement *el = NULL;
+    if (!HashMap_get(meta->pageMapping, num, (void **) &el)) {
+        return false;
+    }
+
+    if (!el) {
+        fprintf(stderr, "resolveByPageNum: expected element to not be null\n");
+        exit(1);
+    }
+
+    if (el_out) {
+        *el_out = el;
+    }
+    return true;
+}

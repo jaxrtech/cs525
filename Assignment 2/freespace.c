@@ -1,6 +1,7 @@
 #include "freespace.h"
 #include "dt.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 // Use de Bruijn multiplication to find next available bit in the free-space bitmap
 // see http://supertech.csail.mit.edu/papers/debruijn.pdf, https://stackoverflow.com/a/31718095/809572
@@ -41,15 +42,16 @@ bool Freespace_markNext(FS_Freespace *self, uint32_t *result) {
         if (chunkInv == 0) { continue; }
 
         uint8_t b = lsb(chunkInv);
-        int blk = (int)
-              ((i * FS_ELEMENTS_PER_CHUNK)
-            + ((FS_ELEMENTS_PER_CHUNK - 1) - b));
-
+        uint8_t off = (FS_ELEMENTS_PER_CHUNK - 1) - b;
+        int blk = (int) ((i * FS_ELEMENTS_PER_CHUNK) + off);
         if (blk >= elementCount) {
             return false;
         }
         bitmap[i] = ~chunkInv | (1u << b);
         *result = blk;
+        printf("DEBUG: Freespace_markNext: { blk = %d, i = %d, b = %d }\n",
+                blk, i, off);
+        fflush(stdout);
         return true;
     }
 
@@ -65,6 +67,9 @@ bool Freespace_unmark(FS_Freespace *self, uint32_t elementIndex) {
 
     uint32_t i = (elementIndex / FS_ELEMENTS_PER_CHUNK);
     uint32_t b = (elementIndex % FS_ELEMENTS_PER_CHUNK);
+    printf("DEBUG: Freespace_unmark: { blk = %d, i = %d, b = %d }\n",
+            elementIndex, i, b);
+
     uint32_t off = (FS_ELEMENTS_PER_CHUNK - 1) - b;
     uint32_t chunk = bitmap[i];
     bitmap[i] = chunk & ~(1u << off);
