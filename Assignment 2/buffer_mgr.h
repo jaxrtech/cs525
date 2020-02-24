@@ -68,11 +68,11 @@ typedef struct BP_Metadata //stores infor for page replacement pointed to by mgm
     HS_HashMap *pageMapping;  // hash map of page number to page handles
     struct RS_StrategyHandler *strategyHandler;  // use forward declaration
     char *pageBuffer;            // contiguous memory pool for blocks
-    FS_Freespace *freespace;
     int clockCount;			  // stores current position of clock in buffer table
     int refCounter;			  // no. threads accessing PAGE DIR (increment before accessing)
     int inUse;
     BP_Statistics *stats;
+    void *strategyMetadata;
 } BP_Metadata;
 
 // convenience macros

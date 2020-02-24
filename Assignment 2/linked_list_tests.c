@@ -13,7 +13,7 @@ void ensure_insert_and_remove_correctly()
     bool isEmpty = LinkedList_isEmpty(list);
     ASSERT_TRUE(isEmpty, "expected list after creation to be null");
 
-    BM_LinkedListElement* el = LinkedList_fetch(list);
+    BM_LinkedListElement* el = LinkedList_fresh(list);
     ASSERT_TRUE(el != NULL, "expected linked list to not be NULL");
 
     LinkedList_append(list, el);

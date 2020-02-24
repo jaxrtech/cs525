@@ -7,6 +7,8 @@
 typedef struct RS_StrategyHandler {
     ReplacementStrategy strategy;
 
+    void (*init)(BM_BufferPool *pool);
+
     void (*insert)(
             BM_BufferPool *pool,
             BM_LinkedListElement *el);

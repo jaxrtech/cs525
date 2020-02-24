@@ -24,7 +24,7 @@ typedef struct BM_LinkedList {
 } BM_LinkedList;
 
 BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize);
-BM_LinkedListElement *LinkedList_fetch(BM_LinkedList *self);
+BM_LinkedListElement *LinkedList_fresh(BM_LinkedList *self);
 bool LinkedList_isEmpty(BM_LinkedList *list);
 void LinkedList_unlink(BM_LinkedList *list, BM_LinkedListElement *el);
 bool LinkedList_remove(BM_LinkedList *self, BM_LinkedListElement *el);
@@ -40,5 +40,10 @@ void LinkedList_insertBefore(
         BM_LinkedList *list,
         BM_LinkedListElement *item,
         BM_LinkedListElement *reference);
+
+bool LinkedList_replace(
+        BM_LinkedList *list,
+        BM_LinkedListElement *replacement,
+        BM_LinkedListElement *existing);
 
 #endif //__LINKED_LIST_H__

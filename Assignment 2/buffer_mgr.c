@@ -14,7 +14,13 @@
 #include "freespace.h"
 
 //Helper Functions
-static RC evict(BM_BufferPool *bm);
+typedef enum BM_EvictMode {
+    BM_EVICTMODE_FRESH,
+    BM_EVICTMODE_REMOVE,
+} BM_EvictMode;
+
+static BM_LinkedListElement *evict(BM_BufferPool *bm, BM_EvictMode mode);
+
 static bool resolveByHandle(
         BM_BufferPool *bm,
         BM_PageHandle *handle,
@@ -69,7 +75,6 @@ RC initBufferPool(
 
     // allocate memory pool
     meta->pageBuffer = calloc(numPages, PAGE_SIZE);
-    meta->freespace = Freespace_create(numPages);
     for (uint32_t i = 0; i < numPages; i++) {
         BM_LinkedListElement *el = &meta->pageDescriptors->elementsMetaBuffer[i];
         BP_PageDescriptor *pd = (BP_PageDescriptor *) el->data;
@@ -89,6 +94,9 @@ RC initBufferPool(
         return result;
     }
     meta->storageManager = storageHandle;
+
+    // initialize strategy handler
+    meta->strategyHandler->init(bm);
 
 	return RC_OK;
 }
@@ -181,7 +189,6 @@ RC pinPage (
 	BP_Metadata *meta = bm->mgmtData;
     BM_LinkedList *pageTable = meta->pageDescriptors;
 	SM_FileHandle *storage = meta->storageManager;
-	BP_Statistics *stats = meta->stats;
 
 	// check if page number exists
     BM_LinkedListElement *el;
@@ -191,12 +198,17 @@ RC pinPage (
         pd->fixCount += 1;
 
     } else {
-        if (meta->inUse == bm->numPages) { //evict if buffer full
-            evict(bm);
+        bool isFull = meta->inUse == bm->numPages;
+        if (isFull) {
+            // evict if buffer full
+            // use `BM_EVICTMODE_FRESH` so that that links between the element
+            // are not altered (we want to do an in-place update)
+            el = evict(bm, BM_EVICTMODE_FRESH);
+        } else {
+            // find empty space in memory pool
+            el = LinkedList_fresh(pageTable);
         }
 
-        // find empty space in memory pool
-        el = LinkedList_fetch(pageTable);
 	    if (el == NULL) {
 	        fprintf(stderr, "pinPage: failed to pin page, evicted but list was full");
 	        exit(1);
@@ -209,7 +221,12 @@ RC pinPage (
 
         // update page number to element mapping
         HashMap_put(meta->pageMapping, pageNum, el);
-        meta->strategyHandler->insert(bm, el);
+        if (!isFull) {
+            // Only insert if the buffer was not full, and we're *not*
+            // doing an insert in place
+            meta->strategyHandler->insert(bm, el);
+        }
+
         readBlock(pageNum, storage, pd->handle.buffer);
         meta->stats->diskReads += 1;
     }
@@ -217,6 +234,10 @@ RC pinPage (
 	// fetch page from memory
     meta->refCounter += 1; //increment buf mgr ref counter for thread use
     meta->strategyHandler->use(bm, el);
+
+    if (page) {
+        *page = pd->handle;
+    }
 
 	return RC_OK;
 }
@@ -334,13 +355,11 @@ int getNumWriteIO (BM_BufferPool *const bm){
 
 
 /*		HELPER FUNCTIONS		*/
-RC evict(BM_BufferPool *bm) {
+static BM_LinkedListElement *evict(BM_BufferPool *bm, BM_EvictMode mode) {
 	BP_Metadata *meta = bm->mgmtData;
-    BP_Statistics *stats = meta->stats;
-    BM_LinkedList *pageTable = meta->pageDescriptors;
     BM_LinkedListElement *el = meta->strategyHandler->elect(bm);
     if (el == NULL) {
-        return RC_OK;
+        return NULL;
     }
     BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
     uint32_t pageNum = pd->handle.pageNum;
@@ -359,10 +378,13 @@ RC evict(BM_BufferPool *bm) {
     memset(pd->handle.buffer, 0, PAGE_SIZE);
     meta->inUse -= 1;
 
-    LinkedList_remove(pageTable, el);
     HashMap_remove(meta->pageMapping, pageNum, NULL);
-
-	return RC_OK;
+    if (mode == BM_EVICTMODE_FRESH) {
+        return el;
+    } else { // if (mode == BM_EVICTMODE_REMOVE) {
+        LinkedList_remove(meta->pageDescriptors, el);
+        return NULL;
+    }
 }
 
 static bool resolveByHandle(
