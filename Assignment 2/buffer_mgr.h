@@ -52,6 +52,8 @@ typedef struct BP_PageDescriptor {
     bool dirty;
 } BP_PageDescriptor;
 
+#define BM_DEREF_ELEMENT(_EL) ((BP_PageDescriptor *) (_EL)->data)
+
 typedef struct BP_Statistics {
     int diskReads;
     int diskWrites;

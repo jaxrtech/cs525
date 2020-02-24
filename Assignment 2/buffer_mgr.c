@@ -31,8 +31,6 @@ static bool resolveByPageNum(
         PageNumber num,
         BM_LinkedListElement **el_out);
 
-#define BM_DEREF_ELEMENT(_EL) ((BP_PageDescriptor *) (_EL)->data)
-
 //
 
 RC initBufferPool(
@@ -114,17 +112,15 @@ RC shutdownBufferPool(BM_BufferPool *const bm){
 
 RC forceFlushPool(BM_BufferPool *const bm){
 	BP_Metadata *meta = bm->mgmtData;
-	BP_Statistics *stats = meta->stats;
     BM_LinkedList *pageTable = meta->pageDescriptors;
     BM_LinkedListElement *el = pageTable->head;
-	for (uint32_t i = 0; i < bm->numPages; ++i) {
-	    if (el == pageTable->sentinel) { break; }
+	while (el != pageTable->sentinel) {
         BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
 		if (pd->dirty) {
 			forcePage(bm, &pd->handle);
-			el = el->next;
 		}
-	}
+        el = el->next;
+    }
 	return RC_OK;
 }
 

@@ -40,13 +40,46 @@ static BM_LinkedListElement* RS_FIFO_elect(
     if (el == NULL) {
         el = list->head;
     }
-    
+
+    bool didFail = false;
+    BM_LinkedListElement *original = el;
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+    while (pd && pd->fixCount > 0) {
+        if (didFail && el == original) {
+            // failed to find a page to evict, all in use
+            return NULL;
+        }
+
+        if (el == list->sentinel) {
+            // if we hit the sentinel, continue to wrap around
+            el = el->next;
+            continue;
+        }
+
+        // cannot evict in-use page, try the next one
+        el = el->next;
+        if (el) {
+            pd = BM_DEREF_ELEMENT(el);
+        }
+
+        didFail = true;
+    }
+
+    if (!el) {
+        fprintf(stderr,
+                "RS_FIFO_elect: expected `el` to not be null at this point\n");
+        exit(1);
+    }
+
     BM_LinkedListElement *next = el->next;
     if (next == list->sentinel) {
         // we've reached the end, signal to just get the `head` next time
         next = NULL;
     }
     rs->next = next;
+    printf("DEBUG: RS_FIFO_elect: next eviction = idx %d\n",
+            next == NULL ? -1 : next->index);
+    fflush(stdout);
 
     return el;
 }
