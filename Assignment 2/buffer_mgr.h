@@ -64,9 +64,10 @@ typedef struct BP_Statistics {
     int *lastFixCounts;
 } BP_Statistics;
 
-typedef struct BP_Metadata //stores infor for page replacement pointed to by mgmtinfo
+// stores information for page replacement pointed to by mgmtinfo
+typedef struct BP_Metadata
 {
-    SM_FileHandle *storageManager;
+    SM_FileHandle *fileHandle;
     BM_LinkedList *pageDescriptors; // linked list of pages
     HS_HashMap *pageMapping;  // hash map of page number to page handles
     struct RS_StrategyHandler *strategyHandler;  // use forward declaration

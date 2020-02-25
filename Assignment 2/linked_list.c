@@ -34,16 +34,38 @@ BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize) {
     return list;
 }
 
+void LinkedList_free(BM_LinkedList *list) {
+    if (list == NULL) { return; }
+
+    free(list->elementsMetaBuffer);
+    list->elementsMetaBuffer = NULL;
+    list->head = NULL;
+    list->tail = NULL;
+
+    free(list->elementsDataBuffer);
+    list->elementsDataBuffer = NULL;
+
+    free(list->sentinel);
+    list->sentinel = NULL;
+
+    Freespace_free(list->freespace);
+    free(list);
+}
+
 BM_LinkedListElement *LinkedList_fresh(BM_LinkedList *self) {
     uint32_t nextIndex;
     if (!Freespace_markNext(self->freespace, &nextIndex)) {
         return NULL;
     }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
+
+#if LOG_DEBUG
     printf("DEBUG: LinkedList_fresh: el@0x%08" PRIxPTR
     " { nextIndex = %d, data = 0x%08" PRIxPTR " }\n",
            (uintptr_t) el, nextIndex, (uintptr_t) el->data);
     fflush(stdout);
+#endif
+
     el->prev = NULL;
     el->next = NULL;
     return el;

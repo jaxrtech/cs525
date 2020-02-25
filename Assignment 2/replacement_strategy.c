@@ -1,5 +1,6 @@
-#include "replacement_strategy.h"
 #include <stdlib.h>
+#include "replacement_strategy.h"
+#include "debug.h"
 
 typedef struct RS_FIFO_Metadata {
     BM_LinkedListElement *next;
@@ -13,6 +14,14 @@ static void RS_FIFO_init(
     meta->strategyMetadata = malloc(sizeof(RS_FIFO_Metadata));
     RS_FIFO_Metadata *rs = meta->strategyMetadata;
     rs->next = NULL;
+}
+
+static void RS_FIFO_free(
+        BM_BufferPool *pool)
+{
+    BP_Metadata *meta = pool->mgmtData;
+    free(meta->strategyMetadata);
+    meta->strategyMetadata = NULL;
 }
 
 static void RS_FIFO_insert(
@@ -77,9 +86,12 @@ static BM_LinkedListElement* RS_FIFO_elect(
         next = NULL;
     }
     rs->next = next;
+
+#if LOG_DEBUG
     printf("DEBUG: RS_FIFO_elect: next eviction = idx %d\n",
             next == NULL ? -1 : next->index);
     fflush(stdout);
+#endif
 
     return el;
 }
@@ -92,6 +104,11 @@ static BM_LinkedListElement* RS_FIFO_elect(
 //
 
 static void RS_LRU_init(BM_BufferPool *pool)
+{
+    // nothing to do
+}
+
+static void RS_LRU_free(BM_BufferPool *pool)
 {
     // nothing to do
 }
@@ -167,6 +184,7 @@ RS_StrategyHandler
         [RS_FIFO] = {
                 .strategy = RS_FIFO,
                 .init = RS_FIFO_init,
+                .free = RS_FIFO_free,
                 .insert = RS_FIFO_insert,
                 .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,
@@ -174,6 +192,7 @@ RS_StrategyHandler
         [RS_LRU] = {
                 .strategy = RS_LRU,
                 .init = RS_LRU_init,
+                .free = RS_LRU_free,
                 .insert = RS_LRU_insert,
                 .use = RS_LRU_use,
                 .elect = RS_LRU_elect,
@@ -181,6 +200,7 @@ RS_StrategyHandler
         [RS_CLOCK] = {
                 .strategy = RS_FIFO,
                 .init = RS_FIFO_init,
+                .free = RS_FIFO_free,
                 .insert = RS_FIFO_insert,
                 .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,
@@ -188,6 +208,7 @@ RS_StrategyHandler
         [RS_LFU] = {
                 .strategy = RS_FIFO,
                 .init = RS_FIFO_init,
+                .free = RS_FIFO_free,
                 .insert = RS_FIFO_insert,
                 .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,
@@ -195,6 +216,7 @@ RS_StrategyHandler
         [RS_LRU_K] = {
                 .strategy = RS_FIFO,
                 .init = RS_FIFO_init,
+                .free = RS_FIFO_free,
                 .insert = RS_FIFO_insert,
                 .use = RS_FIFO_use,
                 .elect = RS_FIFO_elect,

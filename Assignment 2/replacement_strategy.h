@@ -9,6 +9,8 @@ typedef struct RS_StrategyHandler {
 
     void (*init)(BM_BufferPool *pool);
 
+    void (*free)(BM_BufferPool *poll);
+
     void (*insert)(
             BM_BufferPool *pool,
             BM_LinkedListElement *el);

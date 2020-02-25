@@ -17,6 +17,7 @@ typedef struct HS_HashMap {
 } HS_HashMap;
 
 HS_HashMap *HashMap_create(uint32_t numBuckets);
+void HashMap_free(HS_HashMap *self);
 bool HashMap_get(HS_HashMap *self, uint32_t key, void **data);
 void HashMap_put(HS_HashMap *self, uint32_t key, void *data);
 bool HashMap_remove(HS_HashMap *self, uint32_t key, void **data);

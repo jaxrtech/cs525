@@ -31,6 +31,14 @@ FS_Freespace *Freespace_create(uint32_t count) {
     return self;
 }
 
+void Freespace_free(FS_Freespace *self) {
+    if (!self) { return; }
+    free(self->bitmap);
+    self->bitmap = NULL;
+
+    free(self);
+}
+
 bool Freespace_markNext(FS_Freespace *self, uint32_t *result) {
     *result = -1;
     const uint32_t chunkCount = self->chunkCount;
@@ -49,9 +57,11 @@ bool Freespace_markNext(FS_Freespace *self, uint32_t *result) {
         }
         bitmap[i] = ~chunkInv | (1u << b);
         *result = blk;
+#if LOG_DEBUG
         printf("DEBUG: Freespace_markNext: { blk = %d, i = %d, b = %d }\n",
                 blk, i, off);
         fflush(stdout);
+#endif
         return true;
     }
 
@@ -67,8 +77,11 @@ bool Freespace_unmark(FS_Freespace *self, uint32_t elementIndex) {
 
     uint32_t i = (elementIndex / FS_ELEMENTS_PER_CHUNK);
     uint32_t b = (elementIndex % FS_ELEMENTS_PER_CHUNK);
+
+#if LOG_DEBUG
     printf("DEBUG: Freespace_unmark: { blk = %d, i = %d, b = %d }\n",
             elementIndex, i, b);
+#endif
 
     uint32_t off = (FS_ELEMENTS_PER_CHUNK - 1) - b;
     uint32_t chunk = bitmap[i];

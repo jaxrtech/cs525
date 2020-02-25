@@ -10,12 +10,37 @@ HS_HashMap *HashMap_create(uint32_t numBuckets) {
     return self;
 }
 
+void HashMap_free(HS_HashMap *self) {
+    if (self == NULL) { return; }
+
+    // free any overflow nodes
+    for (uint32_t i = 0; i < self->numBuckets; i++) {
+        HS_Node *cur = &self->buckets[i];
+        if (!cur->present) {
+            continue;
+        }
+
+        cur = cur->next;
+        HS_Node *tmp;
+        while (cur != NULL) {
+            tmp = cur->next;
+            free(cur);
+            cur = tmp;
+        }
+    }
+
+    free(self->buckets);
+    self->buckets = NULL;
+
+    free(self);
+}
+
 // Hash function for 32-bit integers
 // see https://stackoverflow.com/a/12996028/809572
 static uint32_t hash(uint32_t x) {
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = (x >> 16) ^ x;
+    x = ((x >> 16u) ^ x) * 0x45d9f3b;
+    x = ((x >> 16u) ^ x) * 0x45d9f3b;
+    x = (x >> 16u) ^ x;
     return x;
 }
 

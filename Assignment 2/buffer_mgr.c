@@ -12,6 +12,7 @@
 #include "buffer_mgr.h"
 #include "replacement_strategy.h"
 #include "freespace.h"
+#include "debug.h"
 
 //Helper Functions
 typedef enum BM_EvictMode {
@@ -91,7 +92,7 @@ RC initBufferPool(
         free(meta);
         return result;
     }
-    meta->storageManager = storageHandle;
+    meta->fileHandle = storageHandle;
 
     // initialize strategy handler
     meta->strategyHandler->init(bm);
@@ -100,13 +101,47 @@ RC initBufferPool(
 }
 
 RC shutdownBufferPool(BM_BufferPool *const bm){
-    forceFlushPool(bm); //write all dirty pages to disk
-//	BP_Metadata *bmdata = bm->mgmtData;
-//	if (bmdata->refCounter > 0){
-//		return RC_BM_IN_USE; //cannot free bm because a page is still in use
-//	}
-//    free(bm->mgmtData); //free struct holding pg table
-//    free(bm); //free buffer manager
+    forceFlushPool(bm); // write all dirty pages to disk
+	BP_Metadata *meta = bm->mgmtData;
+	if (meta->refCounter > 0) {
+        // cannot shutdown because a page is still in use
+		return RC_BM_IN_USE;
+	}
+
+	closePageFile(meta->fileHandle);
+
+    BP_Statistics *stats = meta->stats;
+    free(stats->lastFixCounts);
+    stats->lastFixCounts = NULL;
+
+    free(stats->lastDirtyFlags);
+    stats->lastDirtyFlags = NULL;
+
+    free(stats->lastFrameContents);
+    stats->lastFixCounts = NULL;
+
+    free(stats);
+
+	LinkedList_free(meta->pageDescriptors);
+	meta->pageDescriptors = NULL;
+
+	HashMap_free(meta->pageMapping);
+	meta->pageMapping = NULL;
+
+	free(meta->pageBuffer);
+	meta->pageBuffer = NULL;
+
+	free(meta->fileHandle);
+	meta->fileHandle = NULL;
+
+	// handler struct itself is statically allocated, no need to free
+	meta->strategyHandler->free(bm);
+
+    free(meta);
+    bm->mgmtData = NULL;
+
+    // DO NOT FREE `bm` itself, since the test will free it
+
 	return RC_OK;
 }
 
@@ -134,10 +169,14 @@ RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
 
     BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
     pd->dirty = TRUE;
+
+#if LOG_DEBUG
     printf("DEBUG: markDirty: pg@0x%08" PRIxPTR
         " { pageNum = %d }\n",
            (uintptr_t) page, page->pageNum);
     fflush(stdout);
+#endif
+
     return RC_OK;
 }
 
@@ -156,16 +195,18 @@ RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page) {
 
 RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) {
     BP_Metadata *meta = bm->mgmtData;
-	SM_FileHandle *storage = meta->storageManager;
+	SM_FileHandle *storage = meta->fileHandle;
     BM_LinkedListElement *el = NULL;
 	if (!resolveByHandle(bm, page, &el)) {
         return RC_PAGE_NOT_IN_BUFFER;
     }
     BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
 
+#if LOG_DEBUG
     printf("DEBUG: forcePage: pg@0x%08" PRIxPTR
 	" { pageNum = %d, buf = 0x%08" PRIxPTR " }\n",
            (uintptr_t) page, page->pageNum, (uintptr_t) page->buffer);
+#endif
 
     // ensure that we have enough pages before writing
     // recall that `pageNum` is zero-indexed
@@ -184,7 +225,7 @@ RC pinPage (
 {
 	BP_Metadata *meta = bm->mgmtData;
     BM_LinkedList *pageTable = meta->pageDescriptors;
-	SM_FileHandle *storage = meta->storageManager;
+	SM_FileHandle *storage = meta->fileHandle;
 
 	// check if page number exists
     BM_LinkedListElement *el;
@@ -359,10 +400,12 @@ static BM_LinkedListElement *evict(BM_BufferPool *bm, BM_EvictMode mode) {
     }
     BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
     uint32_t pageNum = pd->handle.pageNum;
-    
+
+#if LOG_DEBUG
     printf("DEBUG: evict: el@0x%08" PRIxPTR
         " { pageNum = %d, index = %d, data = 0x%08" PRIxPTR " }\n",
            (uintptr_t) el, pageNum, el->index, (uintptr_t) el->data);
+#endif
 
     if (pd->dirty) {
         forcePage(bm, &pd->handle);

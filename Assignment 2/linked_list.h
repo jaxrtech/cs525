@@ -24,6 +24,7 @@ typedef struct BM_LinkedList {
 } BM_LinkedList;
 
 BM_LinkedList *LinkedList_create(uint32_t count, size_t elementSize);
+void LinkedList_free(BM_LinkedList *list);
 BM_LinkedListElement *LinkedList_fresh(BM_LinkedList *self);
 bool LinkedList_isEmpty(BM_LinkedList *list);
 void LinkedList_unlink(BM_LinkedList *list, BM_LinkedListElement *el);

@@ -14,6 +14,7 @@ typedef struct FS_Freespace {
 } FS_Freespace;
 
 FS_Freespace *Freespace_create(uint32_t count);
+void Freespace_free(FS_Freespace *self);
 bool Freespace_markNext(FS_Freespace *self, uint32_t *result);
 bool Freespace_unmark(FS_Freespace *self, uint32_t elementIndex);
 
