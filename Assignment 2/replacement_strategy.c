@@ -93,7 +93,7 @@ static BM_LinkedListElement* RS_FIFO_elect(
 
 static void RS_LRU_init(BM_BufferPool *pool)
 {
-    // TODO
+    // nothing to do
 }
 
 static void RS_LRU_insert(
@@ -108,61 +108,53 @@ static void RS_LRU_use(
         BM_BufferPool *pool,
         BM_LinkedListElement *el)
 {
-    // TODO
+    if (!el) { return; }
+    BP_Metadata *meta = pool->mgmtData;
+    BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
+    pd->age = meta->clock;
+    meta->clock++;
 }
 
 static BM_LinkedListElement* RS_LRU_elect(
-        BM_BufferPool *pool) {
+        BM_BufferPool *pool)
+{
     BP_Metadata *meta = pool->mgmtData;
-    RS_FIFO_Metadata *rs = meta->strategyMetadata;
-
     BM_LinkedList *list = meta->pageDescriptors;
-    BM_LinkedListElement *el = rs->next;
-    if (el == NULL) {
-        el = list->head;
+    BM_LinkedListElement *el = list->head;
+    if (el == list->sentinel || el == NULL) {
+        // list is empty
+        return NULL;
     }
 
-    bool didFail = false;
-    BM_LinkedListElement *original = el;
+    BM_LinkedListElement *minElement = NULL;
     BP_PageDescriptor *pd = BM_DEREF_ELEMENT(el);
-    while (pd && pd->fixCount > 0) {
-        if (didFail && el == original) {
-            // failed to find a page to evict, all in use
-            return NULL;
+    uint32_t minAge = UINT32_MAX;
+    while (pd) {
+        if (pd->fixCount > 0) {
+            // cannot be removed, skip
+            goto next;
         }
 
         if (el == list->sentinel) {
-            // if we hit the sentinel, continue to wrap around
-            el = el->next;
-            continue;
+            // if we hit the sentinel, we hit the end
+            break;
         }
 
+        int cur = pd->age;
+        if (cur < minAge) {
+            minAge = cur;
+            minElement = el;
+        }
+
+    next:
         // cannot evict in-use page, try the next one
         el = el->next;
         if (el) {
             pd = BM_DEREF_ELEMENT(el);
         }
-
-        didFail = true;
     }
 
-    if (!el) {
-        fprintf(stderr,
-                "RS_FIFO_elect: expected `el` to not be null at this point\n");
-        exit(1);
-    }
-
-    BM_LinkedListElement *next = el->next;
-    if (next == list->sentinel) {
-        // we've reached the end, signal to just get the `head` next time
-        next = NULL;
-    }
-    rs->next = next;
-    printf("DEBUG: RS_FIFO_elect: next eviction = idx %d\n",
-           next == NULL ? -1 : next->index);
-    fflush(stdout);
-
-    return el;
+    return minElement;
 }
 
 //

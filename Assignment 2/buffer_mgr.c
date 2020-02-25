@@ -56,7 +56,7 @@ RC initBufferPool(
     meta = malloc(sizeof(BP_Metadata));
     bm->mgmtData = meta;
     meta->strategyHandler = &RS_StrategyHandlerImpl[strategy];
-    meta->clockCount = 0; //for clock replacement
+    meta->clock = 0; //for clock replacement
     meta->refCounter = 0; //nothing using buffer yet
     meta->inUse = 0;	  //no pages in use
 
