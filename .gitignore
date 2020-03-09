@@ -3,6 +3,9 @@
 !*.*
 ![mM]akefile
 
+# Chris Local Stuff
+PeerEvals/
+
 # CLion
 .idea/
 
