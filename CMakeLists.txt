@@ -3,5 +3,6 @@ project(cs525 C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_subdirectory("./Assignment 1")
-add_subdirectory("./Assignment 2")
+add_subdirectory(a1)
+add_subdirectory(a2)
+add_subdirectory(a3)

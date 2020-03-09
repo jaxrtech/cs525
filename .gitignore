@@ -1,6 +1,16 @@
+*
+!*/
+!*.*
+![mM]akefile
+
 # CLion
 .idea/
 
 # CMake
 cmake-build-*/
 out/
+*.o
+*.swp
+
+# ignore test executables
+test*
