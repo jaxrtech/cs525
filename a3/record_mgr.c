@@ -1,6 +1,9 @@
 #include "record_mgr.h"
+
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "buffer_mgr.h"
 
 #define NOT_IMPLEMENTED() \
     do { \
@@ -8,14 +11,52 @@
         exit(1); \
     } while (0)
 
-RC initRecordManager (void *mgmtData)
+#define PANIC(msg, vargs...) \
+    do { \
+        fprintf(stderr, "panic(%s in %s:L%d): " msg "\n", \
+                __FILE__,  \
+                __FUNCTION__, \
+                __LINE__, \
+                ##vargs); \
+        fflush(stderr); \
+        exit(1); \
+    } while (0)
+
+#define IGNORE_UNUSED __attribute__((unused))
+
+typedef struct RM_Metadata {
+    BM_BufferPool *bufferPool;
+} RM_Metadata;
+
+static RM_Metadata *g_instance = NULL;
+
+RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 {
-    NOT_IMPLEMENTED();
+    if (g_instance != NULL) {
+        return RC_OK;
+    }
+
+    g_instance = malloc(sizeof(RM_Metadata));
+    if (g_instance) {
+        return -1;
+    }
+
+    BM_BufferPool *pool = MAKE_POOL();
+    g_instance->bufferPool = pool;
+
+    // TODO: initBufferPool for pages
+
+    return RC_OK;
 }
 
 RC shutdownRecordManager ()
 {
-    NOT_IMPLEMENTED();
+    if (g_instance == NULL) {
+        return RC_OK;
+    }
+
+    free(g_instance);
+    return RC_OK;
 }
 
 RC createTable (char *name, Schema *schema)
@@ -83,7 +124,24 @@ RC closeScan (RM_ScanHandle *scan)
 // dealing with schemas
 int getRecordSize (Schema *schema)
 {
-    NOT_IMPLEMENTED();
+    if (schema == NULL) {
+        PANIC("`schema` cannot be null");
+    }
+
+    int total = 0;
+    int n = schema->numAttr;
+    for (int i = 0; i < n; i++) {
+        DataType dt = schema->dataTypes[i];
+        switch (dt) {
+            case DT_INT: total += sizeof(int); break;
+            case DT_BOOL: total += sizeof(bool); break;
+            case DT_FLOAT: total += sizeof(float); break;
+            case DT_STRING: total += schema->typeLength[i]; break;
+            default: PANIC("unhandled datatype");
+        }
+    }
+
+    return total;
 }
 
 Schema *createSchema (
@@ -94,12 +152,20 @@ Schema *createSchema (
         int keySize,
         int *keys)
 {
-    NOT_IMPLEMENTED();
+    Schema *self = malloc(sizeof(Schema));
+    self->numAttr = numAttr;
+    self->attrNames = attrNames;
+    self->dataTypes = dataTypes;
+    self->typeLength = typeLength;
+    self->keySize = keySize;
+    self->keyAttrs = keys;
+    return self;
 }
 
 RC freeSchema (Schema *schema)
 {
-    NOT_IMPLEMENTED();
+    free(schema);
+    return RC_OK;
 }
 
 // dealing with records and attribute values
