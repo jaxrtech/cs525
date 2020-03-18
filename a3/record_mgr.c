@@ -13,7 +13,7 @@
 
 #define PANIC(msg, vargs...) \
     do { \
-        fprintf(stderr, "panic(%s in %s:L%d): " msg "\n", \
+        fprintf(stderr, "panic! [%s] %s:L%d: " msg "\n", \
                 __FILE__,  \
                 __FUNCTION__, \
                 __LINE__, \
@@ -30,8 +30,18 @@ typedef struct RM_Metadata {
 
 static RM_Metadata *g_instance = NULL;
 
+#define RM_DEFAULT_FILENAME "storage.db"
+#define RM_DEFAULT_NUM_POOL_PAGES (512)
+#define RM_DEFAULT_REPLACEMENT_STRATEGY (RS_LRU)
+
+static RC RM_ensureRootPage(BM_BufferPool *pool, PageNumber pageNum)
+{
+    
+}
+
 RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 {
+    RC rc;
     if (g_instance != NULL) {
         return RC_OK;
     }
@@ -43,8 +53,27 @@ RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 
     BM_BufferPool *pool = MAKE_POOL();
     g_instance->bufferPool = pool;
+    rc = initBufferPool(
+            pool,
+            RM_DEFAULT_FILENAME,
+            RM_DEFAULT_NUM_POOL_PAGES,
+            RM_DEFAULT_REPLACEMENT_STRATEGY,
+            NULL);
+    if (rc != RC_OK) {
+        free(g_instance);
+        return rc;
+    }
 
-    // TODO: initBufferPool for pages
+    // Ensure that the first meta-data page is created
+    BM_PageHandle metaPage = {};
+    rc = pinPage(pool, &metaPage, 0);
+    if (rc != RC_OK) {
+        shutdownBufferPool(pool);
+        free(g_instance);
+        return rc;
+    }
+
+    RM_ensureRootPage(pool, 0);
 
     return RC_OK;
 }
