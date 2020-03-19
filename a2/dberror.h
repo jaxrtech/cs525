@@ -31,6 +31,9 @@ typedef int RC;
 #define RC_RM_NO_PRINT_FOR_DATATYPE 204
 #define RC_RM_UNKOWN_DATATYPE 205
 
+// custom errors
+#define RC_RM_NAME_TOO_LONG 206
+
 #define RC_IM_KEY_NOT_FOUND 300
 #define RC_IM_KEY_ALREADY_EXISTS 301
 #define RC_IM_N_TO_LAGE 302

@@ -15,6 +15,7 @@ add_executable(test_assign3_1
         record_mgr.c
         rm_serializer.c
         expr.c
+        rm_page.c
         )
 
 target_include_directories(test_assign3_1

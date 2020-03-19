@@ -83,7 +83,7 @@ RC openPageFile (char *fileName, SM_FileHandle *fHandle)
         return RC_FILE_HANDLE_NOT_INIT;
     }
 
-    // Open file for read+write
+    // Open file for read + write, otherwise create if not found
     FILE *file = NULL;
     if ((file = fopen(fileName, "r+")) == NULL) {
         int reason = errno;
