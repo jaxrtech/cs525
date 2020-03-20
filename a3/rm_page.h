@@ -5,7 +5,7 @@
 
 #define RM_DATABASE_MAGIC "FANCYDB"
 #define RM_DATABASE_MAGIC_LEN  (8)
-static_assert(sizeof(RM_DATABASE_MAGIC) <= RM_DATABASE_MAGIC_LEN, "database magic length mismatch");
+//static_assert(sizeof(RM_DATABASE_MAGIC) <= RM_DATABASE_MAGIC_LEN, "database magic length mismatch");
 
 #define PACKED_STRUCT __attribute__((__packed__))
 

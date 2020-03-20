@@ -41,7 +41,6 @@ RC initBufferPool(
 		ReplacementStrategy strategy,
 		void *stratData)
 {
-	printf("ASSIGNMENT 2 (Buffer Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n\n");
 
 	BP_Metadata *meta = NULL;
 	BP_Statistics *stats = NULL;
@@ -84,13 +83,14 @@ RC initBufferPool(
     // allocate hash map
     meta->pageMapping = HashMap_create(128);
 
-    //open the storage manager
+    // open the storage manager
     storageHandle = malloc(sizeof(SM_FileHandle));
-    RC result;
-    if ((result = openPageFile(pageFileName, storageHandle)) != RC_OK) {
-        free(storageHandle);
-        free(meta);
-        return result;
+    RC rc;
+    if ((rc = createPageFile(pageFileName)) != RC_OK) {
+        goto error;
+    }
+    if ((rc = openPageFile(pageFileName, storageHandle)) != RC_OK) {
+        goto error;
     }
     meta->fileHandle = storageHandle;
 
@@ -98,6 +98,11 @@ RC initBufferPool(
     meta->strategyHandler->init(bm);
 
 	return RC_OK;
+
+error:
+    free(storageHandle);
+    free(meta);
+    return rc;
 }
 
 RC shutdownBufferPool(BM_BufferPool *const bm){
