@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 add_executable(test_assign2_1
-        "../Assignment 1/storage_mgr.c"
+        "../a1/storage_mgr.c"
         buffer_mgr_stat.c
         dberror.c
         buffer_mgr.c
@@ -9,7 +9,7 @@ add_executable(test_assign2_1
         )
 
 add_executable(test_assign2_2
-        "../Assignment 1/storage_mgr.c"
+        "../a1/storage_mgr.c"
         buffer_mgr_stat.c
         dberror.c
         buffer_mgr.c

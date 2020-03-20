@@ -1,4 +1,9 @@
-#Chris Local Stuff
+*
+!*/
+!*.*
+![mM]akefile
+
+# Chris Local Stuff
 PeerEvals/
 
 # CLion
@@ -7,3 +12,8 @@ PeerEvals/
 # CMake
 cmake-build-*/
 out/
+*.o
+*.swp
+
+# ignore test executables
+test*
