@@ -1,11 +1,23 @@
 #ifndef BUFFER_MANAGER_H
 #define BUFFER_MANAGER_H
 
+#include <stdint.h>
+
 // Include return codes and methods for logging errors
 #include "dberror.h"
 
 // Include bool DT
 #include "dt.h"
+
+// Include storage manager types
+#include "storage_mgr.h"
+#include "freespace.h"
+#include "linked_list.h"
+#include "hash_map.h"
+
+#define BM_REPLACEMENT_STRAT_COUNT (5)
+
+struct RS_StrategyHandler;
 
 // Replacement Strategies
 typedef enum ReplacementStrategy {
@@ -21,17 +33,51 @@ typedef int PageNumber;
 #define NO_PAGE -1
 
 typedef struct BM_BufferPool {
-	char *pageFile;
+	const char *pageFile;
 	int numPages;
 	ReplacementStrategy strategy;
+	void *stratData;
 	void *mgmtData; // use this one to store the bookkeeping info your buffer
-	// manager needs for a buffer pool
+	                // manager needs for a buffer pool
 } BM_BufferPool;
 
 typedef struct BM_PageHandle {
 	PageNumber pageNum;
-	char *data;
+	char *buffer;
 } BM_PageHandle;
+
+typedef struct BP_PageDescriptor {
+    BM_PageHandle handle;
+    int fixCount;
+    bool dirty;
+    int age;
+} BP_PageDescriptor;
+
+#define BM_DEREF_ELEMENT(_EL) ((BP_PageDescriptor *) (_EL)->data)
+
+typedef struct BP_Statistics {
+    int diskReads;
+    int diskWrites;
+
+    PageNumber *lastFrameContents;
+    bool *lastDirtyFlags;
+    int *lastFixCounts;
+} BP_Statistics;
+
+// stores information for page replacement pointed to by mgmtinfo
+typedef struct BP_Metadata
+{
+    SM_FileHandle *fileHandle;
+    BM_LinkedList *pageDescriptors; // linked list of pages
+    HS_HashMap *pageMapping;  // hash map of page number to page handles
+    struct RS_StrategyHandler *strategyHandler;  // use forward declaration
+    char *pageBuffer;         // contiguous memory pool for blocks
+    uint32_t clock;			  // current clock timestamp
+    int refCounter;			  // no. threads accessing PAGE DIR (increment before accessing)
+    int inUse;
+    BP_Statistics *stats;
+    void *strategyMetadata;
+} BP_Metadata;
 
 // convenience macros
 #define MAKE_POOL()					\
