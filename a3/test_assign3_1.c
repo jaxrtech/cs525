@@ -377,7 +377,7 @@ testInsertManyRecords(void)
 	rids = (RID *) malloc(sizeof(RID) * numInserts);
 
 	TEST_CHECK(initRecordManager(NULL));
-	TEST_CHECK(createTable("test_table_t",schema));
+	TEST_CHECK(createTable("test_table_t", schema));
 	TEST_CHECK(openTable(table, "test_table_t"));
 
 	// insert rows into table
