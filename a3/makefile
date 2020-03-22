@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -w#Wall
+CFLAGS = -g #Wall
 RM = del
 
 all: test_assign3_1 test_expr
