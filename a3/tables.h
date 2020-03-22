@@ -35,12 +35,13 @@ typedef struct Record
 // information of a table schema: its attributes, datatypes, 
 typedef struct Schema
 {
-	int numAttr;
-	char **attrNames;
-	DataType *dataTypes;
-	int *typeLength;
-	int *keyAttrs;
-	int keySize;
+	int numAttr; 			//relative const
+	char **attrNames;		//array of strings
+	DataType *dataTypes;	//array of dataTypes
+	int *typeLength;		//array of lengths of dataTypes
+	int *keyAttrs;			//array of keyAttrs
+	int keySize;			//relative const
+	int dataPageNum;		//pagenum that stores first tuple of data
 } Schema;
 
 // TableData: Management Structure for a Record Manager to handle one relation

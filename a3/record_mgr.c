@@ -112,9 +112,9 @@ RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 
     return RC_OK;
 
-error:
-    shutdownRecordManager();
-    return rc;
+    error:
+        shutdownRecordManager();
+        return rc;
 }
 
 RC shutdownRecordManager ()
@@ -246,14 +246,42 @@ RC createTable (char *name, Schema *schema)
 
     rc = RC_OK;
 
-finally:
-    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
-    return rc;
+    finally:
+        TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+        return rc;
 }
 
+//move a table to memory by reading it from disk
 RC openTable (RM_TableData *rel, char *name)
 {
-    NOT_IMPLEMENTED();
+    //set up page reading
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BM_PageHandle pageHandle = {};
+    //store the schema page in pageHandle
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
+    
+    //open the schema and read the header attributes
+    RM_Page *pg = (RM_Page*) pageHandle.buffer;
+    RM_PageHeader *hdr = &pg->header;
+    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) pg->data; 
+    /*
+    int numAttr = 
+    char **attrNames = 
+    DataType *dataTypes = 
+    int *typeLength = 
+    int keySize = 
+    int *keys = 
+
+    Schema *schema
+
+
+    //set Tabledata attributes
+    rel->name = name;
+    rel->mgmtData = g_instance;
+    rel->schema = schema;
+    */
+
+    return RC_OK;
 }
 
 RC closeTable (RM_TableData *rel)

@@ -12,9 +12,9 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) 
     self->header.pageNum = pageNumber;
     self->header.kind = kind;
     self->header.flags = RM_PAGE_FLAGS_HAS_FREE_PTRS;
-    self->header.freespaceLowerOffset = 0;
-    self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;
-    self->header.freespaceTrailingOffset = 0;
+    self->header.freespaceLowerOffset = 0;                      //next available byte in page
+    self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
+    self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
     self->data = ((char *) buffer) + sizeof(RM_PageHeader);
     return self;
 }

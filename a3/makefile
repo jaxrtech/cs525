@@ -20,4 +20,4 @@ test_expr : $(filter-out test_assign3_1.o, $(OBJS))
 
 .PHONY : clean
 clean : 
-	$(RM) *.exe *.o *.bin 
+	$(RM) *.exe *.o *.bin *.db
