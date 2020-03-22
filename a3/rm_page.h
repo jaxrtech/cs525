@@ -52,13 +52,25 @@ typedef struct PACKED_STRUCT RM_PageHeader {
      */
     uint16_t freespaceTrailingOffset;
 
+    /**
+     * recordID for schema?
+     */
+    uint16_t RID;
+
+    /**
+     * integer in case data in table exceeds 4096 Bytes (set to -1 if only one page)
+     * allows the pages of a table to coalesce in a linkedlist fashion
+     */
+    int nextPageNum;
+
+
 } RM_PageHeader;
 
 #define RM_PAGE_DATA_SIZE (PAGE_SIZE - sizeof(RM_PageHeader))
 
 typedef struct PACKED_STRUCT RM_Page {
     RM_PageHeader header;
-    char *data;
+    char *data; //series of pointers
 } RM_Page;
 
 typedef uint16_t RM_PageSlotPtr;

@@ -20,7 +20,8 @@ static const char *const RM_MAGIC_BUF = RM_DATABASE_MAGIC;
 #define RM_DEFAULT_NUM_POOL_PAGES (512)
 #define RM_DEFAULT_REPLACEMENT_STRATEGY (RS_LRU)
 
-#define RM_PAGE_DBHEADER (0)
+//special pagenumbers
+#define RM_PAGE_DBHEADER (0) 
 #define RM_PAGE_SCHEMA (1)
 
 static RC RM_writeDatabaseHeader(BM_BufferPool *pool)
@@ -260,26 +261,24 @@ RC openTable (RM_TableData *rel, char *name)
     //store the schema page in pageHandle
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
     
-    //open the schema and read the header attributes
+    //open the schema page and store the header and data
     RM_Page *pg = (RM_Page*) pageHandle.buffer;
     RM_PageHeader *hdr = &pg->header;
-    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) pg->data; 
-    /*
-    int numAttr = 
-    char **attrNames = 
-    DataType *dataTypes = 
-    int *typeLength = 
-    int keySize = 
-    int *keys = 
+    //as long as this isn't zero, it is an offset from the header to the tuple 
+    //increment it by 2 bytes to get the next pointer
+    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) &pg->data; //deref this address for the offset
 
-    Schema *schema
+    //find the pointer in the data that points to the proper table tuple (or error if table doesn't exist)
+    RM_PageTuple tup;
+
+    PANIC();//!!!!!!!!!!!!!!!!having issues getting the data at the offset!!!!!!!!!!!!!!!
 
 
-    //set Tabledata attributes
-    rel->name = name;
-    rel->mgmtData = g_instance;
-    rel->schema = schema;
-    */
+    while(1){ //just scan all tuples and break when we find the right one
+        tup = *(RM_PageTuple *)(&hdr+(*slotPtr)); //get nth tuple
+        //check tuple
+        slotPtr += sizeof(RM_PageSlotPtr); //increment slotPtr
+    }
 
     return RC_OK;
 }
