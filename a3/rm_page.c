@@ -12,6 +12,7 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) 
     self->header.pageNum = pageNumber;
     self->header.kind = kind;
     self->header.flags = RM_PAGE_FLAGS_HAS_FREE_PTRS;
+    self->header.numTuples = 0;
     self->header.freespaceLowerOffset = 0;                      //next available byte in page
     self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
     self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
@@ -39,6 +40,9 @@ void *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     if (spaceAvailable < minSpaceRequired) {
         return NULL;
     }
+
+    // Given that we know that we have space, increment the number of tuples
+    self->header.numTuples++;
 
     // Write in next available slot, by determining the starting offset
     uint16_t slotOffset = self->header.freespaceLowerOffset;
