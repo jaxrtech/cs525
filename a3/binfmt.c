@@ -12,6 +12,11 @@ BF_recomputeSize_single(BF_MessageElement *self)
             self->cached_size = size;
             return size;
 
+        case BF_UINT16:
+            size += sizeof(uint16_t);
+            self->cached_size = size;
+            return size;
+
         case BF_LSTRING:
             // make sure to include the null terminator
             self->lstring.cached_strlen = strlen(self->lstring.str) + 1;
@@ -26,7 +31,7 @@ BF_recomputeSize_single(BF_MessageElement *self)
             self->cached_size = size;
             return size;
 
-        case BF_ARRAY_LMSG: {
+        case BF_ARRAY_MSG: {
             const uint8_t n = self->array_msg.data_count;
             size += sizeof(uint8_t); // store number of data elements
             for (int i = 0; i < n; i++) {
@@ -61,6 +66,10 @@ BF_write_single(BF_MessageElement *self, void *buffer)
             RM_BUF_WRITE(buffer, uint8_t, self->u8);
             break;
 
+        case BF_UINT16:
+            RM_BUF_WRITE(buffer, uint16_t, self->u16);
+            break;
+
         case BF_LSTRING:
             self->lstring.cached_strlen = strlen(self->lstring.str) + 1;
             RM_BUF_WRITE_LSTRING(buffer, self->lstring.str, self->lstring.cached_strlen);
@@ -70,7 +79,7 @@ BF_write_single(BF_MessageElement *self, void *buffer)
             RM_BUF_WRITE_LSTRING(buffer, self->array_u8.buf, self->array_u8.len);
             break;
 
-        case BF_ARRAY_LMSG: {
+        case BF_ARRAY_MSG: {
             const uint8_t n = self->array_msg.data_count;
             RM_BUF_WRITE(buffer, uint8_t, n);
             for (int i = 0; i < n; i++) {
@@ -105,6 +114,10 @@ BF_read_single(BF_MessageElement *self, void *buffer)
             RM_BUF_READ(buffer, uint8_t, self->u8);
             break;
 
+        case BF_UINT16:
+            RM_BUF_READ(buffer, uint16_t, self->u16);
+            break;
+
         case BF_LSTRING:
             RM_BUF_READ(buffer, uint8_t, self->lstring.cached_strlen);
             self->lstring.str = (char *) buffer;
@@ -117,7 +130,7 @@ BF_read_single(BF_MessageElement *self, void *buffer)
             buffer = (char *) buffer + self->array_u8.len;
             break;
 
-        case BF_ARRAY_LMSG: {
+        case BF_ARRAY_MSG: {
             RM_BUF_READ(buffer, uint8_t, self->array_msg.data_count);
             const uint8_t n = self->array_msg.data_count;
             const uint8_t k = self->array_msg.type_count;

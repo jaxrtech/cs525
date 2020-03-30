@@ -17,6 +17,7 @@ add_executable(test_assign3_1
         expr.c
         rm_page.c
         binfmt.c
+        tables.c
         )
 
 add_executable(binfmt_test

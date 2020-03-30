@@ -2,6 +2,7 @@
 #define TABLES_H
 
 #include "dt.h"
+#include "dberror.h"
 
 // Data Types, Records, and Schemas
 typedef enum DataType {
@@ -79,6 +80,8 @@ typedef struct RM_TableData
 			}									\
 		} while(0)
 
+
+RC getAttrOffset (Schema *schema, int attrNum, int *result);
 
 // debug and read methods
 extern Value *stringToValue (char *value);

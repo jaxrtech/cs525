@@ -26,10 +26,10 @@ static void *panic_fmt(char *fmt, ...)
     } while (0)
 
 #define PANIC(msg, vargs...) \
-    panic_fmt("panic! [%s] %s:L%d: " msg "\n", \
+    panic_fmt("panic! [%s:%d] %s: " msg "\n", \
             __FILE__,  \
-            __FUNCTION__, \
             __LINE__, \
+            __FUNCTION__, \
             ##vargs)
 
 //tries to do ACTION and returns the RC if it fails

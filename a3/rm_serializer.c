@@ -67,9 +67,6 @@ typedef struct VarString {
 			free(tmp);					\
 		} while(0)
 
-// prototypes
-static RC attrOffset (Schema *schema, int attrNum, int *result);
-
 // implementations
 char *
 serializeTableInfo(RM_TableData *rel)
@@ -176,7 +173,7 @@ serializeAttr(Record *record, Schema *schema, int attrNum)
 	VarString *result;
 	MAKE_VARSTRING(result);
 
-	attrOffset(schema, attrNum, &offset);
+    getAttrOffset(schema, attrNum, &offset);
 	attrData = record->data + offset;
 
 	switch(schema->dataTypes[attrNum])
@@ -279,30 +276,3 @@ stringToValue(char *val)
 	return result;
 }
 
-
-RC 
-attrOffset (Schema *schema, int attrNum, int *result)
-{
-	int offset = 0;
-	int attrPos = 0;
-
-	for(attrPos = 0; attrPos < attrNum; attrPos++)
-		switch (schema->dataTypes[attrPos])
-		{
-		case DT_STRING:
-			offset += schema->typeLength[attrPos];
-			break;
-		case DT_INT:
-			offset += sizeof(int);
-			break;
-		case DT_FLOAT:
-			offset += sizeof(float);
-			break;
-		case DT_BOOL:
-			offset += sizeof(bool);
-			break;
-		}
-
-	*result = offset;
-	return RC_OK;
-}

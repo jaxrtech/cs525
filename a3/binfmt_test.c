@@ -56,7 +56,7 @@ const struct PACKED_STRUCT TEST_NESTED_T {
 } TEST_NESTED = {
         .nested = {
                 .name = "test_nested",
-                .type = BF_ARRAY_LMSG,
+                .type = BF_ARRAY_MSG,
                 .array_msg = {
                         .type_count = sizeof(struct TEST_MULTI_T) / sizeof(BF_MessageElement),
                         .type = (BF_MessageElement *) &TEST_MULTI,
@@ -289,28 +289,28 @@ bool expect_nested_lmsg_to_round_trip()
 bool expect_nested_schema_format_to_round_trip()
 {
 #define NUM_COLUMNS (4)
-    struct BF_SCHEMA_ATTR_FORMAT_T attrs[NUM_COLUMNS] = {};
-    attrs[0] = BF_SCHEMA_ATTR_FORMAT;
+    struct RM_SCHEMA_ATTR_FORMAT_T attrs[NUM_COLUMNS] = {};
+    attrs[0] = RM_SCHEMA_ATTR_FORMAT;
     BF_SET_U8 (attrs[0].attrType) = (uint8_t) DT_INT;
     BF_SET_STR(attrs[0].attrName) = "id";
-    BF_SET_U8 (attrs[0].attrTypeLenOpt) = 0;
+    BF_SET_U8 (attrs[0].attrTypeLen) = 0;
 
-    attrs[1] = BF_SCHEMA_ATTR_FORMAT;
+    attrs[1] = RM_SCHEMA_ATTR_FORMAT;
     BF_SET_U8 (attrs[1].attrType) = (uint8_t) DT_STRING;
     BF_SET_STR(attrs[1].attrName) = "name";
-    BF_SET_U8 (attrs[1].attrTypeLenOpt) = 200;
+    BF_SET_U8 (attrs[1].attrTypeLen) = 200;
 
-    attrs[2] = BF_SCHEMA_ATTR_FORMAT;
+    attrs[2] = RM_SCHEMA_ATTR_FORMAT;
     BF_SET_U8 (attrs[2].attrType) = (uint8_t) DT_FLOAT;
     BF_SET_STR(attrs[2].attrName) = "amount";
-    BF_SET_U8 (attrs[2].attrTypeLenOpt) = 0;
+    BF_SET_U8 (attrs[2].attrTypeLen) = 0;
 
-    attrs[3] = BF_SCHEMA_ATTR_FORMAT;
+    attrs[3] = RM_SCHEMA_ATTR_FORMAT;
     BF_SET_U8 (attrs[3].attrType) = (uint8_t) DT_BOOL;
     BF_SET_STR(attrs[3].attrName) = "is_employee";
-    BF_SET_U8 (attrs[3].attrTypeLenOpt) = 0;
+    BF_SET_U8 (attrs[3].attrTypeLen) = 0;
 
-    struct BF_SCHEMA_FORMAT_T schema = BF_SCHEMA_FORMAT;
+    struct RM_SCHEMA_FORMAT_T schema = RM_SCHEMA_FORMAT;
     BF_SET_STR(schema.tblName) = "test_table";
     BF_SET_U8 (schema.tblNumAttr) = NUM_COLUMNS;
     uint8_t schema_keys[1] = {0}; // "id" column
@@ -327,7 +327,7 @@ bool expect_nested_schema_format_to_round_trip()
         return false;
     }
 
-    struct BF_SCHEMA_FORMAT_T msg_read = BF_SCHEMA_FORMAT;
+    struct RM_SCHEMA_FORMAT_T msg_read = RM_SCHEMA_FORMAT;
     uint16_t read_size = BF_read((BF_MessageElement *) &msg_read, buffer, num_elements);
     if (read_size != size) {
         fprintf(stderr, "[%s:%d] FAIL: expected read size to be the same recomputed size\n", __FUNCTION__, __LINE__);
@@ -349,8 +349,8 @@ bool expect_nested_schema_format_to_round_trip()
         return false;
     }
 
-    struct BF_SCHEMA_ATTR_FORMAT_T *cur_chunk;
-    struct BF_SCHEMA_ATTR_FORMAT_T *ptr = (struct BF_SCHEMA_ATTR_FORMAT_T *) msg_read.tblAttrs.array_msg.data;
+    struct RM_SCHEMA_ATTR_FORMAT_T *cur_chunk;
+    struct RM_SCHEMA_ATTR_FORMAT_T *ptr = (struct RM_SCHEMA_ATTR_FORMAT_T *) msg_read.tblAttrs.array_msg.data;
     for (int i = 0; i < NUM_COLUMNS; i++) {
         cur_chunk = &ptr[i];
         if (strncmp(BF_AS_STR(cur_chunk->attrName), BF_AS_STR(attrs[i].attrName), BF_STRLEN(attrs[i].attrName)) != 0) {
@@ -363,7 +363,7 @@ bool expect_nested_schema_format_to_round_trip()
             return false;
         }
 
-        if (cur_chunk->attrTypeLenOpt.u8 != attrs[i].attrTypeLenOpt.u8) {
+        if (cur_chunk->attrTypeLen.u8 != attrs[i].attrTypeLen.u8) {
             fprintf(stderr, "[%s:%d] FAIL: expected value to be the same\n", __FUNCTION__, __LINE__);
             return false;
         }
@@ -377,8 +377,8 @@ bool expect_nested_schema_format_to_round_trip()
 int main()
 {
     printf("sizeof(BF_MessageElement) = %lu\n", sizeof(BF_MessageElement));
-    printf("sizeof(BF_SCHEMA_ATTR_FORMAT_T) = %lu\n", sizeof(struct BF_SCHEMA_ATTR_FORMAT_T));
-    printf("sizeof(BF_SCHEMA_FORMAT_T) = %lu\n", sizeof(struct BF_SCHEMA_FORMAT_T));
+    printf("sizeof(BF_SCHEMA_ATTR_FORMAT_T) = %lu\n", sizeof(struct RM_SCHEMA_ATTR_FORMAT_T));
+    printf("sizeof(BF_SCHEMA_FORMAT_T) = %lu\n", sizeof(struct RM_SCHEMA_FORMAT_T));
 
     bool did_succeed = true;
     did_succeed = did_succeed && expect_uint8_to_round_trip();

@@ -7,6 +7,7 @@
 #include "buffer_mgr.h"
 #include "rm_page.h"
 #include "rm_macros.h"
+#include "rm_binfmt.h"
 
 typedef struct RM_Metadata {
     BM_BufferPool *bufferPool;
@@ -147,65 +148,56 @@ RC createTable (char *name, Schema *schema)
         return RC_RM_NAME_TOO_LONG;       
     }
 
-    // Create a new schema tuple in the schema page and add a new data page
-    // We must first calculate how much space we're going to need for the schema data
-    
-    /**
-     * Schema on-disk format
-     * 
-     * /--sizeof(u8)-------\/--strlen(name) * sizeof(char)-\/--sizeof(u8)---\
-     * +-------------------+--------------------------, ,--+---------------+
-     * | tbl name len (u8) | table name str (k)       \ \  | num attr (u8) |
-     * +-------------------+--------------------------' '--+---------------+
-     * 
-     * /-- sizeof(u8)--\/----------- numKeys * sizeof(u8) --------------\
-     * +---------------+----------------+----------+--------------------+
-     * | num keys (u8) | key idx_0 (u8) | ... (u8) | key idx_(n-1) (u8) |
-     * +---------------+----------------+----------+--------------------+
-     * 
-     * /-- sizeof(u8)--\ /---- sizeof(u8) ----\/--sizeof(u8)--\/--strlen(name) * sizeof(char)-\
-     * +----------------+~~~~~~~~~~~~~~~~~~~~~+---------------+--------------------------, ,--+
-     * | attr type (u8) | type len (opt) (u8) | name len (u8) | name str (k)             \ \  |
-     * +----------------+~~~~~~~~~~~~~~~~~~~~~+---------------+--------------------------' '--+
-     *                       ^
-     *                       `-- (only specified for string types)
-     */
-    uint16_t spaceRequired = 0;
+    //
+    // Initialize new data page
+    //
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BP_Metadata *meta = pool->mgmtData;
+    int dataPageNum = meta->fileHandle->totalNumPages;
 
-    // table name
-    spaceRequired += sizeof(uint8_t);
-    spaceRequired += tableNameLength;
+    BM_PageHandle dataPageHandle = {};
+    TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
+    RM_Page_init(dataPageHandle.buffer, dataPageNum, RM_PAGE_KIND_DATA);
+    TRY_OR_RETURN(forcePage(pool, &dataPageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &dataPageHandle));
 
-    // num attrs
-    spaceRequired += sizeof(uint8_t);
-
-    // num keys
-    const int schemaNumKeys = schema->keySize;
-    spaceRequired += sizeof(uint8_t);
-    spaceRequired += sizeof(uint8_t) * schemaNumKeys;
-
-    // attrs
-    int numAttrs = schema->numAttr;
-    uint8_t attrNameLen[numAttrs];
-    for (int i = 0; i < numAttrs; i++) {
-        spaceRequired += sizeof(uint8_t); // type
-        if (schema->dataTypes[i] == DT_STRING) {
-            spaceRequired += sizeof(uint8_t); // type len
-        }
-
-        // pre-calculate attr name length
-        uint64_t nameLen = strlen(schema->attrNames[i]);
-        if (nameLen > RM_MAX_ATTR_NAME_LEN) {
+    //
+    // Setup/copy information from `Schema` interface into the disk format
+    //
+    int numColumns = schema->numAttr;
+    size_t attrsSizeBytes = numColumns * sizeof(RM_SCHEMA_ATTR_FORMAT);
+    struct RM_SCHEMA_ATTR_FORMAT_T *attrs = alloca(attrsSizeBytes);
+    for (int i = 0; i < numColumns; i++) {
+        if (strlen(schema->attrNames[i]) > RM_MAX_ATTR_NAME_LEN) {
             return RC_RM_NAME_TOO_LONG;
         }
-        attrNameLen[i] = (uint8_t) nameLen;
-
-        spaceRequired += sizeof(uint8_t); // attr name len
-        spaceRequired += nameLen;
+        
+        attrs[i] = RM_SCHEMA_ATTR_FORMAT;
+        BF_SET_U8 (attrs[i].attrType) = (uint8_t) schema->dataTypes[i];
+        BF_SET_STR(attrs[i].attrName) = schema->attrNames[i];
+        BF_SET_U8 (attrs[i].attrTypeLen) = schema->typeLength[i];
     }
 
+    struct RM_SCHEMA_FORMAT_T schemaDisk = RM_SCHEMA_FORMAT;
+    BF_SET_U16(schemaDisk.tblDataPageNum) = dataPageNum;
+    BF_SET_STR(schemaDisk.tblName) = name;
+    BF_SET_U8(schemaDisk.tblNumAttr) = numColumns;
+    BF_SET_ARRAY_MSG(schemaDisk.tblAttrs, attrs, attrsSizeBytes);
+
+    int numKeys = schema->keySize;
+    size_t keysDiskSize = numKeys * sizeof(uint8_t);
+    uint8_t *keysDisk = alloca(keysDiskSize);
+    for (int i = 0; i < numKeys; i++) {
+        keysDisk[i] = (uint8_t) schema->keyAttrs[i];
+    }
+    BF_SET_ARRAY_U8(schemaDisk.tblKeys, keysDisk, keysDiskSize);
+    uint16_t spaceRequired = BF_recomputeSize(
+            (BF_MessageElement *) &schemaDisk,
+            BF_NUM_ELEMENTS(sizeof(schemaDisk)));
+
+    //
     // Open schema page and reserve the required amount of space
-    BM_BufferPool *pool = g_instance->bufferPool;
+    //
     BM_PageHandle pageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
 
@@ -219,28 +211,7 @@ RC createTable (char *name, Schema *schema)
     //
     // Write out of the schema tuple data
     //
-
-    // table name
-    RM_BUF_WRITE_LSTRING(tupleBuffer, name, tableNameLength);
-
-    // num attrs
-    RM_BUF_WRITE(tupleBuffer, uint8_t, numAttrs);
-
-    // num keys
-    RM_BUF_WRITE(tupleBuffer, uint8_t, schemaNumKeys);
-    for (int i = 0; i < schemaNumKeys; i++) {
-        RM_BUF_WRITE(tupleBuffer, uint8_t, schema->keyAttrs[i]);
-    }
-
-    // attrs
-    for (int i = 0; i < numAttrs; i++) {
-        RM_BUF_WRITE(tupleBuffer, uint8_t, schema->dataTypes[i]);
-        if (schema->dataTypes[i] == DT_STRING) {
-            RM_BUF_WRITE(tupleBuffer, uint8_t, schema->typeLength[i]);
-        }
-        RM_BUF_WRITE_LSTRING(tupleBuffer, schema->attrNames[i], attrNameLen[i]);
-    }
-
+    BF_write((BF_MessageElement *) &schemaDisk, tupleBuffer, BF_NUM_ELEMENTS(sizeof(schemaDisk)));
     if ((rc = forcePage(pool, &pageHandle)) != RC_OK) {
         goto finally;
     }
@@ -264,22 +235,54 @@ RC openTable (RM_TableData *rel, char *name)
     //open the schema page and store the header and data
     RM_Page *pg = (RM_Page*) pageHandle.buffer;
     RM_PageHeader *hdr = &pg->header;
-    //as long as this isn't zero, it is an offset from the header to the tuple 
+    //as long as this isn't zero, it is an offset from the header to the tuple
     //increment it by 2 bytes to get the next pointer
-    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) &pg->data; //deref this address for the offset
+    RM_PageSlotPtr *off; //deref this address for the offset
 
     //find the pointer in the data that points to the proper table tuple (or error if table doesn't exist)
-    RM_PageTuple tup;
+    RM_PageTuple *tup;
+    uint16_t num = hdr->numTuples;
+    bool hit = false;
+    struct RM_SCHEMA_FORMAT_T schemaMsg;
+    for (int i = 0; i < num; i++) {
+        off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
+        tup = (RM_PageTuple *) (pg->data + *off);
 
-    PANIC();//!!!!!!!!!!!!!!!!having issues getting the data at the offset!!!!!!!!!!!!!!!
-
-
-    while(1){ //just scan all tuples and break when we find the right one
-        tup = *(RM_PageTuple *)(&hdr+(*slotPtr)); //get nth tuple
-        //check tuple
-        slotPtr += sizeof(RM_PageSlotPtr); //increment slotPtr
+        schemaMsg = RM_SCHEMA_FORMAT;
+        BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
+        if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
+            hit = true;
+            break;
+        }
     }
 
+    if (!hit) {
+        return RC_RM_UNKNOWN_TABLE;
+    }
+
+    int numKeys = BF_ARRAY_U8_LEN(schemaMsg.tblKeys);
+    int numAttrs = BF_AS_U8(schemaMsg.tblNumAttr);
+    rel->name = BF_AS_STR(schemaMsg.tblName);
+    rel->schema = malloc(sizeof(struct Schema));
+    rel->schema->dataPageNum = BF_AS_U16(schemaMsg.tblDataPageNum);
+    rel->schema->numAttr = numAttrs;
+    rel->schema->keySize = numKeys;
+    rel->schema->keyAttrs = calloc(numKeys, sizeof(int));
+    uint8_t *keyIndexes = BF_AS_ARRAY_U8(schemaMsg.tblKeys);
+    for (int i = 0; i < numKeys; i++) {
+        rel->schema->keyAttrs[i] = keyIndexes[i];
+    }
+    rel->schema->dataTypes = calloc(numAttrs, sizeof(enum DataType));
+    rel->schema->attrNames = calloc(numAttrs, sizeof(char *));
+    rel->schema->typeLength = calloc(numAttrs, sizeof(int));
+    struct RM_SCHEMA_ATTR_FORMAT_T *dataTypes = (struct RM_SCHEMA_ATTR_FORMAT_T *) BF_AS_ARRAY_MSG(schemaMsg.tblAttrs);
+    for (int i = 0; i < numAttrs; i++) {
+        struct RM_SCHEMA_ATTR_FORMAT_T *attr = &dataTypes[i];
+        rel->schema->dataTypes[i] = BF_AS_U8(attr->attrType);
+        rel->schema->typeLength[i] = BF_AS_U8(attr->attrTypeLen);
+        rel->schema->attrNames[i] = BF_AS_STR(attr->attrName);
+    }
+    
     return RC_OK;
 }
 
@@ -295,13 +298,41 @@ RC deleteTable (char *name)
 
 int getNumTuples (RM_TableData *rel)
 {
-    NOT_IMPLEMENTED();
+    int pageNum = rel->schema->dataPageNum;
+    BM_BufferPool *pool = g_instance->bufferPool;
+
+    BM_PageHandle handle;
+    if (pinPage(pool, &handle, pageNum) != RC_OK) {
+        return -1;
+    }
+
+    RM_Page *page = (RM_Page *) handle.buffer;
+    uint16_t numTups = page->header.numTuples;
+    if (unpinPage(pool, &handle) != RC_OK) {
+        return -1;
+    }
+
+    return numTups;
 }
 
 // handling records in a table
 RC insertRecord (RM_TableData *rel, Record *record)
 {
-    NOT_IMPLEMENTED();
+    int pageNum = rel->schema->dataPageNum;
+    BM_BufferPool *pool = g_instance->bufferPool;
+
+    BM_PageHandle handle;
+    TRY_OR_RETURN(pinPage(pool, &handle, pageNum));
+
+    RM_Page *page = (RM_Page *) handle.buffer;
+    size_t size = getRecordSize(rel->schema);
+    void *tup = RM_Page_reserveTuple(page, size);
+    memcpy(tup, record->data, size);
+
+    TRY_OR_RETURN(markDirty(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
+
+    return RC_OK;
 }
 
 RC deleteRecord (RM_TableData *rel, RID id)
@@ -386,20 +417,93 @@ RC freeSchema (Schema *schema)
 // dealing with records and attribute values
 RC createRecord (Record **record, Schema *schema)
 {
-    NOT_IMPLEMENTED();
+    int size = getRecordSize(schema);
+    Record *r = malloc(sizeof(Record) + size);
+    if (r == NULL) {
+        PANIC("out of memory");
+        return RC_WRITE_FAILED;
+    }
+
+    r->data = (char *) r + sizeof(Record);
+    *record = r;
+    return RC_OK;
 }
 
 RC freeRecord (Record *record)
 {
-    NOT_IMPLEMENTED();
+    free(record);
+    return RC_OK;
 }
 
 RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
 {
-    NOT_IMPLEMENTED();
+    if (attrNum < 0 || attrNum >= schema->numAttr) {
+        return RC_RM_ATTR_NUM_OUT_OF_BOUNDS;
+    }
+
+    int offset;
+    TRY_OR_RETURN(getAttrOffset(schema, attrNum, &offset));
+
+    Value *result = malloc(sizeof(Value));
+    if (result == NULL) {
+        PANIC("out of memory");
+        exit(1);
+    }
+
+    DataType dt = schema->dataTypes[attrNum];
+    result->dt = dt;
+    void *buf = record->data + offset;
+    switch (dt) {
+        case DT_STRING:
+            result->v.stringV = (char *) malloc(strlen(buf) + 1);
+            strcpy(result->v.stringV, buf);
+            break;
+
+        case DT_BOOL:
+            result->v.boolV = *(bool *) buf;
+            break;
+
+        case DT_FLOAT:
+            result->v.floatV = *(float *) buf;
+            break;
+
+        case DT_INT:
+            result->v.intV = *(int *) buf;
+            break;
+
+        default: PANIC("unhandled datatype");
+    }
+
+    *value = result;
+    return RC_OK;
 }
 
 RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
 {
-    NOT_IMPLEMENTED();
+    if (attrNum < 0 || attrNum >= schema->numAttr) {
+        return RC_RM_ATTR_NUM_OUT_OF_BOUNDS;
+    }
+
+    int offset;
+    TRY_OR_RETURN(getAttrOffset(schema, attrNum, &offset));
+
+    Value *result = malloc(sizeof(Value));
+    if (result == NULL) {
+        PANIC("out of memory");
+        exit(1);
+    }
+
+    DataType dt = schema->dataTypes[attrNum];
+    result->dt = dt;
+    void *buf = record->data + offset;
+    switch (dt) {
+        case DT_STRING:
+        case DT_BOOL:
+        case DT_FLOAT:
+        case DT_INT:
+        default:
+            NOT_IMPLEMENTED();
+    }
+
+    return RC_OK;
 }

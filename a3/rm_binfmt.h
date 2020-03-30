@@ -3,16 +3,16 @@
 #include "dt.h"
 #include "binfmt.h"
 
-const struct PACKED_STRUCT BF_SCHEMA_ATTR_FORMAT_T {
+const struct PACKED_STRUCT RM_SCHEMA_ATTR_FORMAT_T {
     BF_MessageElement attrType;
-    BF_MessageElement attrTypeLenOpt;
+    BF_MessageElement attrTypeLen;
     BF_MessageElement attrName;
-} BF_SCHEMA_ATTR_FORMAT = {
+} RM_SCHEMA_ATTR_FORMAT = {
         .attrType = {
                 .name = "attr_type",
                 .type = BF_UINT8,
         },
-        .attrTypeLenOpt = {
+        .attrTypeLen = {
                 .name = "attr_type_len",
                 .type = BF_UINT8,
         },
@@ -22,15 +22,20 @@ const struct PACKED_STRUCT BF_SCHEMA_ATTR_FORMAT_T {
         },
 };
 
-const struct PACKED_STRUCT BF_SCHEMA_FORMAT_T {
+const struct PACKED_STRUCT RM_SCHEMA_FORMAT_T {
     BF_MessageElement tblName;
-    BF_MessageElement tblNumAttr;
+    BF_MessageElement tblDataPageNum;
     BF_MessageElement tblKeys;
+    BF_MessageElement tblNumAttr;
     BF_MessageElement tblAttrs;
-} BF_SCHEMA_FORMAT = {
+} RM_SCHEMA_FORMAT = {
         .tblName = {
                 .name = "tbl_name",
                 .type = BF_LSTRING,
+        },
+        .tblDataPageNum = {
+                .name = "tbl_data_pgnum",
+                .type = BF_UINT16,
         },
         .tblNumAttr = {
                 .name = "tbl_num_attr",
@@ -42,10 +47,10 @@ const struct PACKED_STRUCT BF_SCHEMA_FORMAT_T {
         },
         .tblAttrs = {
                 .name = "tbl_attrs",
-                .type = BF_ARRAY_LMSG,
+                .type = BF_ARRAY_MSG,
                 .array_msg = {
-                        .type_count = sizeof(BF_SCHEMA_ATTR_FORMAT) / sizeof(BF_MessageElement),
-                        .type = (const struct BF_MessageElement *) &BF_SCHEMA_ATTR_FORMAT,
+                        .type_count = sizeof(RM_SCHEMA_ATTR_FORMAT) / sizeof(BF_MessageElement),
+                        .type = (const struct BF_MessageElement *) &RM_SCHEMA_ATTR_FORMAT,
                 },
         }
 };
