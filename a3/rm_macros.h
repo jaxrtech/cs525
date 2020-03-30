@@ -31,24 +31,3 @@
 
 #define IS_FLAG_SET(FLAG, MASK)    (((FLAG) & (MASK)) != 0)
 #define IS_FLAG_UNSET(FLAG, MASK)  (((FLAG) & (MASK)) == 0)
-
-//write val to buffer by casting val to TYPE pointer and dereferencing it
-#define RM_BUF_WRITE(BUFFER, TYPE, VAL) \
-    do { \
-        *((TYPE *) (BUFFER)) = (TYPE)(VAL); \
-        BUFFER = ((char *) (BUFFER)) + sizeof(TYPE); \
-    } while (0)
-
-#define RM_BUF_WRITE_FROM(BUFFER, PTR, LEN) \
-    do { \
-        memcpy((BUFFER), (PTR), (LEN)); \
-        BUFFER = ((char *) (BUFFER)) + (LEN); \
-    } while (0)
-
-//writes the length of the string  and then writes the string (up to 255 chars)
-#define RM_BUF_WRITE_LSTRING(BUFFER, STR_PTR, LEN) \
-    do { \
-        RM_BUF_WRITE((BUFFER), uint8_t, (LEN)); \
-        RM_BUF_WRITE_FROM((BUFFER), (STR_PTR), (LEN)); \
-    } while (0)
-
