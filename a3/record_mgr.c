@@ -351,7 +351,8 @@ int getRecordSize (Schema *schema)
             case DT_BOOL: total += sizeof(bool); break;
             case DT_FLOAT: total += sizeof(float); break;
             case DT_STRING: total += schema->typeLength[i]; break;
-            default: PANIC("unhandled datatype");
+            default:
+                PANIC("unhandled datatype");
         }
     }
 

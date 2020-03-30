@@ -3,7 +3,7 @@
 #include <string.h>
 
 uint16_t
-BF_recomputeSize(BF_MessageElement *self)
+BF_recomputeSize_single(BF_MessageElement *self)
 {
     uint16_t size = 0;
     switch (self->type) {
@@ -30,7 +30,7 @@ BF_recomputeSize(BF_MessageElement *self)
             const uint8_t n = self->array_msg.data_count;
             size += sizeof(uint8_t); // store number of data elements
             for (int i = 0; i < n; i++) {
-                size += BF_recomputeSize(&self->array_msg.data[i]);
+                size += BF_recomputeSize_single(&self->array_msg.data[i]);
             }
             self->cached_size = size;
             return size;
@@ -41,31 +41,19 @@ BF_recomputeSize(BF_MessageElement *self)
 }
 
 uint16_t
-BF_recomputeSize_arr(BF_MessageElement *arr, uint8_t num_elements)
+BF_recomputeSize(BF_MessageElement *arr, uint8_t num_elements)
 {
     uint16_t size = 0;
     for (int i = 0; i < num_elements; i++) {
-        size += BF_recomputeSize(&arr[i]);
+        size += BF_recomputeSize_single(&arr[i]);
     }
     return size;
 }
 
 uint16_t
-BF_write_arr(BF_MessageElement *arr, void *buffer, uint8_t num_elements)
+BF_write_single(BF_MessageElement *self, void *buffer)
 {
-    void *buffer_orig = buffer;
-
-    for (int i = 0; i < num_elements; i++) {
-        buffer = (char *) buffer + BF_write(&arr[i], buffer);
-    }
-
-    return ((char *) buffer) - ((char *) buffer_orig);
-}
-
-uint16_t
-BF_write(BF_MessageElement *self, void *buffer)
-{
-    BF_recomputeSize(self);
+    BF_recomputeSize_single(self);
     void *buffer_orig = buffer;
 
     switch (self->type) {
@@ -86,7 +74,7 @@ BF_write(BF_MessageElement *self, void *buffer)
             const uint8_t n = self->array_msg.data_count;
             RM_BUF_WRITE(buffer, uint8_t, n);
             for (int i = 0; i < n; i++) {
-                buffer = (char *) buffer + BF_write(&self->array_msg.data[i], buffer);
+                buffer = (char *) buffer + BF_write_single(&self->array_msg.data[i], buffer);
             }
             break;
         }
@@ -96,7 +84,19 @@ BF_write(BF_MessageElement *self, void *buffer)
 }
 
 uint16_t
-BF_read(BF_MessageElement *self, void *buffer)
+BF_write(BF_MessageElement *arr, void *buffer, uint8_t num_elements)
+{
+    void *buffer_orig = buffer;
+
+    for (int i = 0; i < num_elements; i++) {
+        buffer = (char *) buffer + BF_write_single(&arr[i], buffer);
+    }
+
+    return ((char *) buffer) - ((char *) buffer_orig);
+}
+
+uint16_t
+BF_read_single(BF_MessageElement *self, void *buffer)
 {
     void *buffer_orig = buffer;
 
@@ -125,7 +125,7 @@ BF_read(BF_MessageElement *self, void *buffer)
             for (int i = 0; i < n; i++) {
                 const uint8_t ti = i % k;
                 memcpy(&self->array_msg.data[i], &self->array_msg.type[ti], sizeof(BF_MessageElement));
-                buffer = (char *) buffer + BF_read(&self->array_msg.data[i], buffer);
+                buffer = (char *) buffer + BF_read_single(&self->array_msg.data[i], buffer);
             }
             break;
         }
@@ -135,12 +135,12 @@ BF_read(BF_MessageElement *self, void *buffer)
 }
 
 uint16_t
-BF_read_arr(BF_MessageElement *arr, void *buffer, uint8_t num_elements)
+BF_read(BF_MessageElement *arr, void *buffer, uint8_t num_elements)
 {
     void *buffer_orig = buffer;
 
     for (int i = 0; i < num_elements; i++) {
-        buffer = (char *) buffer + BF_read(&arr[i], buffer);
+        buffer = (char *) buffer + BF_read_single(&arr[i], buffer);
     }
 
     return ((char *) buffer) - ((char *) buffer_orig);

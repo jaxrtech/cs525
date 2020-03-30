@@ -2,6 +2,22 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+
+#ifndef __RM_PANIC_FMT__
+#define __RM_PANIC_FMT__
+static void *panic_fmt(char *fmt, ...)
+{
+    va_list myargs;
+    va_start(myargs, fmt);
+
+    vfprintf(stderr, fmt, myargs);
+    fflush(stderr);
+    va_end(myargs);
+
+    exit(1);
+}
+#endif
 
 #define NOT_IMPLEMENTED() \
     do { \
@@ -10,15 +26,11 @@
     } while (0)
 
 #define PANIC(msg, vargs...) \
-    do { \
-        fprintf(stderr, "panic! [%s] %s:L%d: " msg "\n", \
-                __FILE__,  \
-                __FUNCTION__, \
-                __LINE__, \
-                ##vargs); \
-        fflush(stderr); \
-        exit(1); \
-    } while (0)
+    panic_fmt("panic! [%s] %s:L%d: " msg "\n", \
+            __FILE__,  \
+            __FUNCTION__, \
+            __LINE__, \
+            ##vargs)
 
 //tries to do ACTION and returns the RC if it fails
 #define TRY_OR_RETURN(ACTION) \
