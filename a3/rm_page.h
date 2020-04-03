@@ -70,7 +70,12 @@ typedef struct PACKED_STRUCT RM_PageHeader {
 
 typedef struct PACKED_STRUCT RM_Page {
     RM_PageHeader header;
-    char *data; //series of pointers
+
+    /**
+     * Used as a marker for the beginning of the data buffer.
+     * Should always be used as `&page->dataBegin`.
+     */
+    char dataBegin;
 } RM_Page;
 
 typedef uint16_t RM_PageSlotPtr;

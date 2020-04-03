@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -g#Wall
-RM = del #rm 
+CFLAGS = -g -Wall
+RM = rm -rf
 
 all: test_assign3_1 test_expr #test_binfmt
 .PHONY : all
@@ -44,3 +44,7 @@ test_expr : $(OBJS_TEST_EXPR)
 .PHONY : clean
 clean : 
 	$(RM) *.exe *.o *.bin *.db
+	$(RM) test_assign3_1
+	$(RM) test_binfmt
+	$(RM) test_expr
+	$(RM) ../cmake-build-debug

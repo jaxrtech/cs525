@@ -155,6 +155,7 @@ RC createTable (char *name, Schema *schema)
     BM_BufferPool *pool = g_instance->bufferPool;
     BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
+    meta->fileHandle->totalNumPages++;
 
     BM_PageHandle dataPageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
@@ -246,8 +247,11 @@ RC openTable (RM_TableData *rel, char *name)
     struct RM_SCHEMA_FORMAT_T schemaMsg;
     int i=0;
     while (i<num) {
-        off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
-        tup = (RM_PageTuple *) (pg->data + *off);
+        size_t slot = i * sizeof(RM_PageSlotPtr);
+        off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
+        printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
+        fflush(stdout);
+        tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
         schemaMsg = RM_SCHEMA_FORMAT;
         BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
@@ -432,7 +436,7 @@ int getRecordSize (Schema *schema)
             case DT_FLOAT: total += sizeof(float); break;
             case DT_STRING: total += schema->typeLength[i]; break;
             default:
-                PANIC("unhandled datatype");
+                PANIC("unhandled datatype: dt = %d", dt);
         }
     }
 

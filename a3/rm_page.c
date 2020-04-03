@@ -17,7 +17,6 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) 
     self->header.freespaceLowerOffset = 0;                      //next available byte in page
     self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
     self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
-    self->data = ((char *) buffer) + sizeof(RM_PageHeader);
     return self;
 }
 
@@ -47,10 +46,10 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
 
     // Write in next available slot, by determining the starting offset
     uint16_t slotOffset = self->header.freespaceLowerOffset;
-    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) (self->data + slotOffset);
+    RM_PageSlotPtr *slotPtr = (RM_PageSlotPtr *) (&self->dataBegin + slotOffset);
 
     uint16_t tupOffset = self->header.freespaceUpperEnd - minTupleSpaceRequired;
-    RM_PageTuple *tup = (RM_PageTuple *) (self->data + tupOffset);
+    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + tupOffset);
 
     // Update pointers
     self->header.freespaceLowerOffset += minPtrSpaceRequired;
@@ -60,6 +59,8 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     }
 
     uint16_t slotId = slotOffset / sizeof(RM_PageSlotId);
+    printf("rm_page: [pg#%d] self->data = %p; tupOffset = 0x%x\n", self->header.pageNum, &self->dataBegin, tupOffset);
+    fflush(stdout);
     *slotPtr = tupOffset;
     tup->slotId = slotId;
     tup->len = len;
@@ -86,7 +87,7 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     //get position of tuple
     tupOffset -= (numTuples - slotNum);
     //printf("tupOffset: %d\n", tupOffset);
-    RM_PageTuple *tup = (RM_PageTuple *) (self->data + tupOffset);
+    RM_PageTuple *tup = (RM_PageTuple *) (self->dataBegin + tupOffset);
     //printf("tupdata: %s\n", self->data);
     //read the data and assign it into the record ptr
     RM_PageSlotLength n = tup->len;
