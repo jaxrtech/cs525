@@ -1,8 +1,8 @@
 CC = gcc
-CFLAGS = -g #Wall
-RM = rm
+#CFLAGS = -Wall #g
+RM = del #rm 
 
-all: test_assign3_1 test_expr test_binfmt
+all: test_assign3_1 test_expr #test_binfmt
 .PHONY : all
 	
 HEADERS = $(wildcard *.h)
@@ -18,6 +18,7 @@ DEPS_CORE = storage_mgr.c \
        rm_serializer.c \
        expr.c \
        rm_page.c \
+       tables.c \
        binfmt.c
 
 DEPS_TEST_ASSIGN3_1 = $(DEPS_CORE) test_assign3_1.c
@@ -37,8 +38,8 @@ test_assign3_1 : $(OBJS_TEST_ASSIGN3_1)
 test_expr : $(OBJS_TEST_EXPR)
 	$(CC) $(CFLAGS) $^ -o $@
 
-test_binfmt : $(OBJS_TEST_BINFMT)
-	$(CC) $(CFLAGS) $^ -o $@
+#test_binfmt : $(OBJS_TEST_BINFMT)
+#	$(CC) $(CFLAGS) $^ -o $@
 
 .PHONY : clean
 clean : 

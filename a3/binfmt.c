@@ -43,6 +43,7 @@ BF_recomputeSize_single(BF_MessageElement *self)
     }
 
     PANIC("unhandled BF_MessageElement type");
+    return -1;
 }
 
 uint16_t

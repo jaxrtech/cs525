@@ -81,7 +81,7 @@ typedef struct RM_TableData
 		} while(0)
 
 
-RC getAttrOffset (Schema *schema, int attrNum, int *result);
+extern RC getAttrOffset (Schema *schema, int attrNum, int *result);
 
 // debug and read methods
 extern Value *stringToValue (char *value);
