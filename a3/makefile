@@ -43,4 +43,4 @@ test_expr : $(OBJS_TEST_EXPR)
 
 .PHONY : clean
 clean : 
-	$(RM) -f *.exe *.o *.bin *.db
+	$(RM) *.exe *.o *.bin *.db

@@ -19,6 +19,9 @@ static void *panic_fmt(char *fmt, ...)
 }
 #endif
 
+#define MARKER(n) \
+    do {fprintf(stderr, "MARKER %d: [%s:%d] function %s\n", n, __FILE__, __LINE__, __FUNCTION__); } while(0)
+
 #define NOT_IMPLEMENTED() \
     do { \
         fprintf(stderr, "NOT IMPLEMENTED: [%s:%d] function %s\n", __FILE__, __LINE__, __FUNCTION__); \

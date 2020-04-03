@@ -227,12 +227,11 @@ RC createTable (char *name, Schema *schema)
 //move a table to memory by reading it from disk
 RC openTable (RM_TableData *rel, char *name)
 {
-    //set up page reading
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle pageHandle = {};
     //store the schema page in pageHandle
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
-    
+    MARKER(0);
     //open the schema page and store the header and data
     RM_Page *pg = (RM_Page*) pageHandle.buffer;
     RM_PageHeader *hdr = &pg->header;
@@ -244,6 +243,7 @@ RC openTable (RM_TableData *rel, char *name)
     RM_PageTuple *tup;
     uint16_t num = hdr->numTuples;
     bool hit = false;
+    MARKER(1);
     struct RM_SCHEMA_FORMAT_T schemaMsg;
     int i=0;
     for (i = 0; i < num; i++) {
@@ -257,7 +257,7 @@ RC openTable (RM_TableData *rel, char *name)
             break;
         }
     }
-
+    MARKER(2);
     if (!hit) {
         return RC_RM_UNKNOWN_TABLE;
     }
