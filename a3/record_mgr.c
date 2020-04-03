@@ -328,6 +328,7 @@ int getNumTuples (RM_TableData *rel)
 // handling records in a table
 RC insertRecord (RM_TableData *rel, Record *record)
 {
+    //get page that holds the records for the data. Assume overflow handled in RM_ReserveTuple(...);
     int pageNum = rel->schema->dataPageNum;
     BM_BufferPool *pool = g_instance->bufferPool;
 
@@ -357,7 +358,17 @@ RC updateRecord (RM_TableData *rel, Record *record)
 
 RC getRecord (RM_TableData *rel, RID id, Record *record)
 {
-    NOT_IMPLEMENTED();
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BM_PageHandle handle;
+    //pin page containing record if it exists
+    TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
+
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    //linear search for record and store it in Record ptr *(equality comparison using RID)*
+    //use try-catch and return RC_RM_NO_MORE_TUPLES on fail
+    RM_Page_getTuple(page, record, id); //SEE DEFINITION IT ISN'T IMPLEMENTED
+    return RC_OK;
 }
 
 // scans
@@ -371,10 +382,11 @@ RC next (RM_ScanHandle *scan, Record *record)
     NOT_IMPLEMENTED();
 }
 
+/* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
     NOT_IMPLEMENTED();
-}
+} 
 
 // dealing with schemas
 int getRecordSize (Schema *schema)
