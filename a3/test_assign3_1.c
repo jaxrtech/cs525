@@ -76,8 +76,9 @@ int
 main (void) 
 {
 	testName = "";
-
+	printf("BEGIN TEST:\n");
 	testInsertManyRecords();
+	printf("TEST RECORDS:\n");
 	testRecords();
 	testCreateTableAndInsert();
 	testUpdateTable();
@@ -390,6 +391,7 @@ testInsertManyRecords(void)
 		rids[i] = r->id;
 	}
 	TEST_CHECK(closeTable(table));
+	printf("\n\nCRASH SOMEWHERE ABOVE\n\n");
 	TEST_CHECK(openTable(table, "test_table_t"));
 
 	// retrieve records from the table and compare to expected final stage

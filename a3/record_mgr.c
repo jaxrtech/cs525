@@ -479,7 +479,8 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
     return RC_OK;
 }
 
-RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
+//using the above as a reference, set (union) value to Schema
+RC setAttr (Record *record, Schema *schema, int attrNum, Value *value) 
 {
     if (attrNum < 0 || attrNum >= schema->numAttr) {
         return RC_RM_ATTR_NUM_OUT_OF_BOUNDS;
@@ -496,14 +497,28 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
 
     DataType dt = schema->dataTypes[attrNum];
     result->dt = dt;
-    void *buf = record->data + offset;
+    void *buf = record->data + offset; //remember void ptr is 8 Bytes in length 
     switch (dt) {
-        case DT_STRING:
+        case DT_STRING: ;//<--deleting this raises label can't be part of statement error?
+            int len = schema->typeLength[attrNum];      //get str length
+            strncpy((char*)buf, value->v.stringV, len); //copy string from Value
+            buf += offset;                              //increment buffer by offset for next
+            break;
+
         case DT_BOOL:
+            break;
+
         case DT_FLOAT:
+            break;
+
         case DT_INT:
+            *(int *) buf = value->v.intV;   //set value to buf
+            buf += sizeof(int);             //move buf ptr
+            break;
+
         default:
-            NOT_IMPLEMENTED();
+            
+            break;
     }
 
     return RC_OK;
