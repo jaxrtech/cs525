@@ -246,9 +246,10 @@ RC openTable (RM_TableData *rel, char *name)
     MARKER(1);
     struct RM_SCHEMA_FORMAT_T schemaMsg;
     int i=0;
-    for (i = 0; i < num; i++) {
+    while (i<num) {
         off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
         tup = (RM_PageTuple *) (pg->data + *off);
+        MARKER(2);
 
         schemaMsg = RM_SCHEMA_FORMAT;
         BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
@@ -256,8 +257,8 @@ RC openTable (RM_TableData *rel, char *name)
             hit = true;
             break;
         }
+        i++;
     }
-    MARKER(2);
     if (!hit) {
         return RC_RM_UNKNOWN_TABLE;
     }
