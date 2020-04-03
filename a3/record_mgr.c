@@ -245,7 +245,8 @@ RC openTable (RM_TableData *rel, char *name)
     uint16_t num = hdr->numTuples;
     bool hit = false;
     struct RM_SCHEMA_FORMAT_T schemaMsg;
-    for (int i = 0; i < num; i++) {
+    int i=0;
+    for (i = 0; i < num; i++) {
         off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
         tup = (RM_PageTuple *) (pg->data + *off);
 
@@ -289,15 +290,20 @@ RC openTable (RM_TableData *rel, char *name)
 
 RC closeTable (RM_TableData *rel)
 {
-    /* force write everything back to disk
-     * we access the Table and the page buffer simultaneously
-     * force write all pages in buffer manager
-     * we assume that new pages are alloc'd in disk during creation of new page.
-     * DB should lock until all pages are unpinned.
-     *** free all structs after
-     */
+    //write all pages back to disk
+    BM_BufferPool *pool = g_instance->bufferPool;
+    forceFlushPool(pool);
 
-    NOT_IMPLEMENTED();
+    //free schema then relation
+    free(rel->schema->attrNames);
+    free(rel->schema->dataTypes);
+    free(rel->schema->typeLength);
+    free(rel->schema->keyAttrs);
+    free(rel->schema);
+
+    free(rel);
+
+    return RC_OK;
 }
 
 RC deleteTable (char *name)
@@ -346,8 +352,13 @@ RC insertRecord (RM_TableData *rel, Record *record)
     return RC_OK;
 }
 
+/* Finds the record using an RID and deletes it from table. 
+ * Also sets flags for additional slot ptrs
+ * 
+ */
 RC deleteRecord (RM_TableData *rel, RID id)
 {
+
     NOT_IMPLEMENTED();
 }
 
@@ -356,18 +367,17 @@ RC updateRecord (RM_TableData *rel, Record *record)
     NOT_IMPLEMENTED();
 }
 
-RC getRecord (RM_TableData *rel, RID id, Record *record)
+RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to any page (even overflow pages)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle handle;
+
     //pin page containing record if it exists
     TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
 
     RM_Page *page = (RM_Page *) handle.buffer;
+    RM_Page_getTuple(page, record, id); //SEE DEFINITION -- NEEDS TESTING
 
-    //linear search for record and store it in Record ptr *(equality comparison using RID)*
-    //use try-catch and return RC_RM_NO_MORE_TUPLES on fail
-    RM_Page_getTuple(page, record, id); //SEE DEFINITION IT ISN'T IMPLEMENTED
     return RC_OK;
 }
 

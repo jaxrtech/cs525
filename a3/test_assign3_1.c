@@ -76,7 +76,6 @@ int
 main (void) 
 {
 	testName = "";
-	printf("BEGIN TEST:\n");
 	testInsertManyRecords();
 	printf("TEST RECORDS:\n");
 	testRecords();
@@ -380,6 +379,7 @@ testInsertManyRecords(void)
 	TEST_CHECK(initRecordManager(NULL));
 	TEST_CHECK(createTable("test_table_t", schema));
 	TEST_CHECK(openTable(table, "test_table_t"));
+	printf("\n\nCRASH SOMEWHERE ABOVE\n\n");
 
 	// insert rows into table
 	for(i = 0; i < numInserts; i++)
@@ -391,7 +391,6 @@ testInsertManyRecords(void)
 		rids[i] = r->id;
 	}
 	TEST_CHECK(closeTable(table));
-	printf("\n\nCRASH SOMEWHERE ABOVE\n\n");
 	TEST_CHECK(openTable(table, "test_table_t"));
 
 	// retrieve records from the table and compare to expected final stage
@@ -399,6 +398,7 @@ testInsertManyRecords(void)
 	{
 		RID rid = rids[i];
 		TEST_CHECK(getRecord(table, rid, r));
+		printf("TEST OK %d\n", i+1);
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, realInserts[i]), r, schema, "compare records");
 	}
 
