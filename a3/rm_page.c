@@ -21,7 +21,7 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) 
     return self;
 }
 
-void *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
+RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     if (len > RM_PAGE_DATA_SIZE) {
         PANIC("`len` was greater than `RM_PAGE_DATA_SIZE`");
     }
@@ -66,8 +66,8 @@ void *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
 
     void *buf = ((char *) tup) + sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength);
     tup->data = buf;
-    memset(buf, 0xef, len);
-    return buf;
+//    memset(buf, 0xef, len);
+    return tup;
 }
 
 //assume we always have the right page from calling method 
@@ -89,7 +89,10 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     RM_PageTuple *tup = (RM_PageTuple *) (self->data + tupOffset);
     //printf("tupdata: %s\n", self->data);
     //read the data and assign it into the record ptr
-    void *buf; memcpy(buf, tup->data, tup->len);
+    RM_PageSlotLength n = tup->len;
+    void *buf = malloc(n);
+    memcpy(buf, tup->data, n);
+
     record->id = rid;
     record->data = buf;
 }

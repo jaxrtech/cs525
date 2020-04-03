@@ -378,9 +378,7 @@ testInsertManyRecords(void)
 
 	TEST_CHECK(initRecordManager(NULL));
 	TEST_CHECK(createTable("test_table_t", schema));
-	printf("\n\nCRASH SOMEWHERE BELOW\n\n");
 	TEST_CHECK(openTable(table, "test_table_t"));
-	printf("\n\nCRASH SOMEWHERE ABOVE\n\n");
 
 	// insert rows into table
 	for(i = 0; i < numInserts; i++)

@@ -203,8 +203,8 @@ RC createTable (char *name, Schema *schema)
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
 
     RM_Page *page = (RM_Page *) pageHandle.buffer;
-    void *tupleBuffer = RM_Page_reserveTuple(page, spaceRequired);
-    if (tupleBuffer == NULL) {
+    RM_PageTuple *tup = RM_Page_reserveTuple(page, spaceRequired);
+    if (tup == NULL) {
         rc = RC_RM_NO_MORE_TUPLES;
         goto finally;
     }
@@ -212,6 +212,7 @@ RC createTable (char *name, Schema *schema)
     //
     // Write out of the schema tuple data
     //
+    void *tupleBuffer = tup->data;
     BF_write((BF_MessageElement *) &schemaDisk, tupleBuffer, BF_NUM_ELEMENTS(sizeof(schemaDisk)));
     if ((rc = forcePage(pool, &pageHandle)) != RC_OK) {
         goto finally;
@@ -246,9 +247,7 @@ RC openTable (RM_TableData *rel, char *name)
     int i=0;
     while (i<num) {
         off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
-        printf("off (ptr): %d\n", (int)(off));
-        printf("off (deref'd):%d\n", (int)(*off));
-        tup = (RM_PageTuple *) (pg->data + *off); //SEGFAULT HERE
+        tup = (RM_PageTuple *) (pg->data + *off);
 
         schemaMsg = RM_SCHEMA_FORMAT;
         BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
@@ -338,16 +337,23 @@ RC insertRecord (RM_TableData *rel, Record *record)
     int pageNum = rel->schema->dataPageNum;
     BM_BufferPool *pool = g_instance->bufferPool;
 
-    BM_PageHandle handle;
-    TRY_OR_RETURN(pinPage(pool, &handle, pageNum));
+    BM_PageHandle pageHandle = {};
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNum));
 
-    RM_Page *page = (RM_Page *) handle.buffer;
+    RM_Page *page = (RM_Page *) pageHandle.buffer;
     size_t size = getRecordSize(rel->schema);
-    void *tup = RM_Page_reserveTuple(page, size);
-    memcpy(tup, record->data, size);
+    RM_PageTuple *tup = RM_Page_reserveTuple(page, size);
+    if (tup == NULL) {
+        unpinPage(pool, &pageHandle);
+        return RC_RM_NO_MORE_TUPLES;
+    }
 
-    TRY_OR_RETURN(markDirty(pool, &handle));
-    TRY_OR_RETURN(unpinPage(pool, &handle));
+    record->id.page = pageNum;
+    record->id.slot = tup->slotId;
+    memcpy(tup->data, record->data, size);
+
+    TRY_OR_RETURN(markDirty(pool, &pageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
 
     return RC_OK;
 }
