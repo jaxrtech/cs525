@@ -289,11 +289,20 @@ RC openTable (RM_TableData *rel, char *name)
 
 RC closeTable (RM_TableData *rel)
 {
+    /* force write everything back to disk
+     * we access the Table and the page buffer simultaneously
+     * force write all pages in buffer manager
+     * we assume that new pages are alloc'd in disk during creation of new page.
+     * DB should lock until all pages are unpinned.
+     *** free all structs after
+     */
+
     NOT_IMPLEMENTED();
 }
 
 RC deleteTable (char *name)
 {
+    /* close a table and delete the file from disk (or re-init FANCY_DB) */
     NOT_IMPLEMENTED();
 }
 
@@ -499,16 +508,21 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
     result->dt = dt;
     void *buf = record->data + offset; //remember void ptr is 8 Bytes in length 
     switch (dt) {
-        case DT_STRING: ;//<--deleting this raises label can't be part of statement error?
+        case DT_STRING: 
+            ;//<--deleting this raises error due to next line
             int len = schema->typeLength[attrNum];      //get str length
             strncpy((char*)buf, value->v.stringV, len); //copy string from Value
             buf += offset;                              //increment buffer by offset for next
             break;
 
         case DT_BOOL:
+            *(bool *) buf = value->v.boolV;  //set value to buf
+            buf += sizeof(bool);             //move buf ptr
             break;
 
         case DT_FLOAT:
+            *(float *) buf = value->v.floatV; //set value to buf
+            buf += sizeof(float);             //move buf ptr
             break;
 
         case DT_INT:
@@ -517,8 +531,8 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
             break;
 
         default:
-            
-            break;
+            PANIC("Setting Unknown Attribute");
+            exit(1);
     }
 
     return RC_OK;
