@@ -388,20 +388,31 @@ RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to 
 }
 
 // scans
+/* Starting a scan initializes the RM_ScanHandle data structure passed as an argument to startScan */
 RC startScan (RM_TableData *rel, RM_ScanHandle *scan, Expr *cond)
 {
-    NOT_IMPLEMENTED();
+    scan->rel = rel;
+    scan->mgmtData = (void*)cond;
+    return RC_OK;
 }
 
+//NOTE: if cond is NULL, then we will get all tuples
 RC next (RM_ScanHandle *scan, Record *record)
 {
-    NOT_IMPLEMENTED();
+    //unpack
+    Expr *cond = (Expr *)(scan->mgmtData);
+    RM_TableData *rel = scan->rel;
+
+    //try to gettuple THEN check if it works with expr
+
 }
 
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
+    //unpin pages?
     NOT_IMPLEMENTED();
+    return RC_OK;
 } 
 
 // dealing with schemas
