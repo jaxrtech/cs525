@@ -70,6 +70,7 @@ void *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     return buf;
 }
 
+//assume we always have the right page from calling method 
 void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     printf("NEEDS TESTING: RM_Page_getTuple(...) in rm_page.c\n");
     //get the bounds for our scan
@@ -78,16 +79,17 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
 
     //Get num Tuples and slot number
     uint16_t numTuples = self->header.numTuples;
+    printf("numtups: %d\n", numTuples);
     int slotNum = rid.slot; 
-    if (slotNum > maxSlotCount) return RC_RM_NO_MORE_TUPLES; //handle overflow blocks later
+    if (slotNum > maxSlotCount) PANIC("slotNum > max slots in page");
 
     //get position of tuple
     tupOffset -= (numTuples - slotNum);
+    //printf("tupOffset: %d\n", tupOffset);
     RM_PageTuple *tup = (RM_PageTuple *) (self->data + tupOffset);
-
+    //printf("tupdata: %s\n", self->data);
     //read the data and assign it into the record ptr
     void *buf; memcpy(buf, tup->data, tup->len);
     record->id = rid;
     record->data = buf;
-
 }

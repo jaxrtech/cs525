@@ -231,7 +231,6 @@ RC openTable (RM_TableData *rel, char *name)
     BM_PageHandle pageHandle = {};
     //store the schema page in pageHandle
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
-    MARKER(0);
     //open the schema page and store the header and data
     RM_Page *pg = (RM_Page*) pageHandle.buffer;
     RM_PageHeader *hdr = &pg->header;
@@ -243,13 +242,13 @@ RC openTable (RM_TableData *rel, char *name)
     RM_PageTuple *tup;
     uint16_t num = hdr->numTuples;
     bool hit = false;
-    MARKER(1);
     struct RM_SCHEMA_FORMAT_T schemaMsg;
     int i=0;
     while (i<num) {
         off = (RM_PageSlotPtr *) (pg->data + (i * sizeof(RM_PageSlotPtr)));
-        tup = (RM_PageTuple *) (pg->data + *off);
-        MARKER(2);
+        printf("off (ptr): %d\n", (int)(off));
+        printf("off (deref'd):%d\n", (int)(*off));
+        tup = (RM_PageTuple *) (pg->data + *off); //SEGFAULT HERE
 
         schemaMsg = RM_SCHEMA_FORMAT;
         BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
