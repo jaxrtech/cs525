@@ -369,13 +369,13 @@ RC deleteTable (char *name)
         schemaMsg = RM_SCHEMA_FORMAT;
         BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
         if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
-            rid->slot = slot; //mark RID slot
+            rid->slot = i; //mark RID slot
             break;
         }
     }
 
     // Null the schema tuple data
-    RM_Page_deleteTuple(pg, rid);
+    RM_Page_deleteTuple(pg, *rid);
 
     TRY_OR_RETURN(forcePage(pool, &handle));
     TRY_OR_RETURN(unpinPage(pool, &handle));
