@@ -360,15 +360,23 @@ RC insertRecord (RM_TableData *rel, Record *record)
                 pageNum = (int) hdr->nextPageNum;
                 continue; //try with next page
             } else {
-                //create new page
-                
-                //link new page to 
                 meta->fileHandle->totalNumPages++;
-                hdr->nextPageNum = meta->fileHandle->totalNumPages-1;
-                exit(0);
-            }
+                int newpageNum = meta->fileHandle->totalNumPages-1;
 
-            return RC_RM_NO_MORE_TUPLES; //cannot create a new page
+                //create new page
+                BM_PageHandle newdata = {};
+                TRY_OR_RETURN(pinPage(pool, &newdata, newpageNum));
+                RM_Page_init(newdata.buffer, newpageNum, RM_PAGE_KIND_DATA);
+                TRY_OR_RETURN(forcePage(pool, &newdata));
+                TRY_OR_RETURN(unpinPage(pool, &newdata));
+                //link new page to table
+                hdr->nextPageNum = newpageNum;
+
+                //set page to reserve tuple and try again
+                pageNum = newpageNum;
+                continue;
+            }
+            PANIC("cannot create a new page to insert record");
         }
 
         record->id.page = pageNum;
@@ -377,9 +385,9 @@ RC insertRecord (RM_TableData *rel, Record *record)
 
         TRY_OR_RETURN(markDirty(pool, &pageHandle));
         TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+        return RC_OK;
 
     } while (1); // hdr->nextPageNum != -1 );
-    return RC_OK;
 }
 
 /* Finds the record using an RID and deletes it from table. 
