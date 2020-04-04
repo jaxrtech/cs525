@@ -126,6 +126,6 @@ void *RM_Page_deleteTuple(RM_Page *self, RID rid){
 
     //raise flag in header: RM_PAGE_FLAGS_HAS_FREE_PTRS
     self->header.flags = RM_PAGE_FLAGS_HAS_TRAILING;
-
     //NOT_IMPLEMENTED(); //store free space pointer
 }
+

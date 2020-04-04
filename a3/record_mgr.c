@@ -145,6 +145,14 @@ RC createTable (char *name, Schema *schema)
 {
     RC rc;
 
+    //check if table with same name already exists
+    RM_TableData *temp = (RM_TableData *) malloc(sizeof(RM_TableData));
+    if ((openTable(temp, name)) == RC_OK){
+        closeTable(temp);
+        return RC_IM_KEY_ALREADY_EXISTS;
+    }
+    free(temp);
+
     uint64_t tableNameLength = strlen(name);
     if (tableNameLength <= 0 || tableNameLength > RM_MAX_ATTR_NAME_LEN) {
         return RC_RM_NAME_TOO_LONG;       
@@ -329,7 +337,7 @@ RC deleteTable (char *name)
             RM_Page *page = (RM_Page *) handle.buffer;
             pageNum = page->header.nextPageNum;
 
-            NOT_IMPLEMENTED(); //mark page as empty here
+            //NOT_IMPLEMENTED(); //mark page as empty here
 
         if (unpinPage(pool, &handle) != RC_OK) { return -1; }
 
@@ -339,15 +347,35 @@ RC deleteTable (char *name)
 
     //delete tuple in schema page
     TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_SCHEMA));
-    RM_Page *page = (RM_Page *) handle.buffer;
+    RM_Page *pg = (RM_Page *) handle.buffer;
+    RM_PageHeader *hdr = &pg->header;
 
     //get the record id for the schema tuple
     RID *rid = (RID *) malloc(sizeof(RID));
     rid->page = RM_PAGE_SCHEMA;
-    NOT_IMPLEMENTED(); //get the slot number for the relation tuple
+
+    //get the slot number for the relation tuple
+    RM_PageTuple *tup;
+    RM_PageSlotPtr *off;
+    uint16_t num = hdr->numTuples;
+    struct RM_SCHEMA_FORMAT_T schemaMsg;
+    int i=0;
+    while (i<num) {
+        size_t slot = i * sizeof(RM_PageSlotPtr);
+        off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
+        fflush(stdout);
+        tup = (RM_PageTuple *) (&pg->dataBegin + *off);
+
+        schemaMsg = RM_SCHEMA_FORMAT;
+        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
+        if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
+            rid->slot = slot; //mark RID slot
+            break;
+        }
+    }
 
     // Null the schema tuple data
-    RM_Page_deleteTuple(page, rid);
+    RM_Page_deleteTuple(pg, rid);
 
     TRY_OR_RETURN(forcePage(pool, &handle));
     TRY_OR_RETURN(unpinPage(pool, &handle));

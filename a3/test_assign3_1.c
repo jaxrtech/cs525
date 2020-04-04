@@ -399,7 +399,6 @@ testInsertManyRecords(void)
 	{
 		RID rid = rids[i];
 		TEST_CHECK(getRecord(table, rid, r));
-		printf("TEST OK %d\n", i+1);
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, realInserts[i]), r, schema, "compare records");
 	}
 	printf("%d records in (reopened) \"test_table_t\" are OK", numInserts);
@@ -411,6 +410,7 @@ testInsertManyRecords(void)
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_t"));
+	printf("Deleted Table: \"test_table_t\"\n");
 	TEST_CHECK(shutdownRecordManager());
 
 	freeRecord(r);
