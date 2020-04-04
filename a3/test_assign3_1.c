@@ -78,9 +78,9 @@ main (void)
 	testName = "";
 	//testInsertManyRecords();
 	//testRecords();
-	testCreateTableAndInsert();
-	testUpdateTable();
-	//testScans();
+	//testCreateTableAndInsert();
+	//testUpdateTable();
+	testScans();
 	//testScansTwo();
 	//testMultipleScans();
 
@@ -245,7 +245,7 @@ testMultipleScans(void)
 
 	ASSERT_TRUE(scanOne == scanTwo, "scans returned same number of tuples");
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
+		TEST_CHECK(rc);		//fail here
 	TEST_CHECK(closeScan(sc1));
 	TEST_CHECK(closeScan(sc2));
 
@@ -472,7 +472,7 @@ void testScans (void)
 	MAKE_ATTRREF(right, 2);
 	MAKE_BINOP_EXPR(sel, left, right, OP_COMP_EQUAL);
 
-	TEST_CHECK(startScan(table, sc, sel));
+	TEST_CHECK(startScan(table, sc, sel)); //fail here
 	while((rc = next(sc, r)) == RC_OK)
 	{
 		for(i = 0; i < scanSizeOne; i++)
@@ -564,7 +564,7 @@ void testScansTwo (void)
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, inserts[1]), r, schema, "compare records");
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
+		TEST_CHECK(rc);					// fail here
 	TEST_CHECK(closeScan(sc));
 
 	// Select 1 record with STRING in condition b='ffff'.

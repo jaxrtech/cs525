@@ -139,14 +139,7 @@ RC shutdownRecordManager ()
     g_instance = NULL;
 
     //delete the pagefile
-<<<<<<< HEAD
-    if (destroyPageFile(RM_DEFAULT_FILENAME) != RC_OK) {
-        return RC_FILE_DESTROY_ERROR; 
-    }
 
-=======
-    
->>>>>>> 572be1fe16639c1f800ee4f109e1d832dabfbe4e
     return RC_OK;
 }
 
@@ -535,25 +528,62 @@ RC startScan (RM_TableData *rel, RM_ScanHandle *scan, Expr *cond)
 {
     scan->rel = rel;
     scan->mgmtData = (void*)cond;
+    scan->lastRID = malloc(sizeof(RID));
+    //start from beginning
+    lastRID.page = rel->schema->dataPageNum;
+    lastRID.slot = 0;
     return RC_OK;
 }
 
 //NOTE: if cond is NULL, then we will get all tuples
-RC next (RM_ScanHandle *scan, Record *record)
+RC next(RM_ScanHandle *scan, Record *record)
 {
+    RC rc;
     //unpack
     Expr *cond = (Expr *)(scan->mgmtData);
     RM_TableData *rel = scan->rel;
+    uint16_t numTups;
+    RID *rid = scan->lastRID;
+    int pageNum = rid.page;
+
+    BM_PageHandle handle;
 
     //try to gettuple THEN check if it works with expr
+    do{
+        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
+        //get page
+        RM_Page *page = (RM_Page *) handle.buffer;
+        RM_PageHeader *header = &page->header;
+        //check if tuple slot exists
+        if (scan->lastRID.slot < header->numTuples){
+
+
+            if (scan->lastRID.slot == header->numTuples){
+
+            }
+        }
+        else if(header->nextPageNum != -1){
+            pageNum = header->nextPageNum;
+            continue;   //try all pages
+        }
+        return RC_RM_NO_MORE_TUPLES;
+
+        pageNum = header->nextPageNum;
+
+        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+
+    } while (1); //will quit when there isn't a new page to scan
 
 }
 
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
-    //unpin pages?
     NOT_IMPLEMENTED();
+    //unpack struct and free it (freeing scan is done by caller)
+    Expr *cond = (Expr *) scan->cond;
+
+    //unpin pages?
     return RC_OK;
 } 
 
