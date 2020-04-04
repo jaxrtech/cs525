@@ -387,8 +387,10 @@ testInsertManyRecords(void)
 		r = fromTestRecord(schema, realInserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
-		printf("Inserted record: %d\n", i-1);
+		//printf("Inserted record: %d\n", i-1);
 	}
+	int numtuples = getNumTuples(table);
+	printf("test_table_t (numtuples) = %d\n", numtuples);
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(openTable(table, "test_table_t"));
 

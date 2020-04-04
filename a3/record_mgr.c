@@ -318,21 +318,27 @@ RC deleteTable (char *name)
 
 int getNumTuples (RM_TableData *rel)
 {
+    int totalNumTups = 0;
+
     int pageNum = rel->schema->dataPageNum;
     BM_BufferPool *pool = g_instance->bufferPool;
-
     BM_PageHandle handle;
-    if (pinPage(pool, &handle, pageNum) != RC_OK) {
-        return -1;
-    }
 
-    RM_Page *page = (RM_Page *) handle.buffer;
-    uint16_t numTups = page->header.numTuples;
-    if (unpinPage(pool, &handle) != RC_OK) {
-        return -1;
-    }
+    do{
+        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
 
-    return numTups;
+        RM_Page *page = (RM_Page *) handle.buffer;
+        RM_PageHeader *header = &page->header;
+
+        uint16_t numTups = header->numTuples;
+        totalNumTups += (int) numTups;
+        pageNum = header->nextPageNum;
+
+        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+
+    } while ( pageNum != -1 );
+
+    return totalNumTups;
 }
 
 // handling records in a table
