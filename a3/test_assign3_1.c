@@ -77,7 +77,7 @@ main (void)
 {
 	testName = "";
 	testInsertManyRecords();
-	testRecords();
+	testRecords(); //fails
 	testCreateTableAndInsert();
 	testUpdateTable();
 	testScans();
@@ -245,7 +245,7 @@ testMultipleScans(void)
 
 	ASSERT_TRUE(scanOne == scanTwo, "scans returned same number of tuples");
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
+		TEST_CHECK(rc);		//fail here
 	TEST_CHECK(closeScan(sc1));
 	TEST_CHECK(closeScan(sc2));
 
@@ -302,7 +302,7 @@ testUpdateTable (void)
 	rids = (RID *) malloc(sizeof(RID) * numInserts);
 
 	TEST_CHECK(initRecordManager(NULL));
-	TEST_CHECK(createTable("test_table_r",schema));
+	TEST_CHECK(createTable("test_table_r",schema)); //fail here
 	TEST_CHECK(openTable(table, "test_table_r"));
 
 	// insert rows into table
@@ -410,7 +410,6 @@ testInsertManyRecords(void)
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_t"));
-	printf("Deleted Table: \"test_table_t\"\n");
 	TEST_CHECK(shutdownRecordManager());
 
 	freeRecord(r);
@@ -473,18 +472,24 @@ void testScans (void)
 	MAKE_ATTRREF(right, 2);
 	MAKE_BINOP_EXPR(sel, left, right, OP_COMP_EQUAL);
 
-	TEST_CHECK(startScan(table, sc, sel));
+	TEST_CHECK(startScan(table, sc, sel)); //fail here
+	int diff; 
 	while((rc = next(sc, r)) == RC_OK)
 	{
 		for(i = 0; i < scanSizeOne; i++)
 		{
-			if (memcmp(fromTestRecord(schema, scanOneResult[i])->data,r->data,getRecordSize(schema)) == 0)
-				foundScan[i] = TRUE;
+			int rSize = getRecordSize(schema);
+			Record *tv = fromTestRecord(schema, scanOneResult[i]);
+			if ((diff=memcmp( (tv->data), (r->data), (rSize) )) == 0){
+				foundScan[i] = true;
+			}
 		}
 	}
-	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
-	TEST_CHECK(closeScan(sc));
+	if (rc != RC_RM_NO_MORE_TUPLES){
+		printf("scan next error: %d\n", rc);
+		TEST_CHECK(rc); 
+	}
+	TEST_CHECK(closeScan(sc)); //implement me (or comment out temporarily)
 	for(i = 0; i < scanSizeOne; i++)
 		ASSERT_TRUE(foundScan[i], "check for scan result");
 
@@ -565,7 +570,7 @@ void testScansTwo (void)
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, inserts[1]), r, schema, "compare records");
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
+		TEST_CHECK(rc);					// fail here
 	TEST_CHECK(closeScan(sc));
 
 	// Select 1 record with STRING in condition b='ffff'.

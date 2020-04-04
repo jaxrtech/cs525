@@ -1,3 +1,4 @@
+#include <errno.h> 
 #include "record_mgr.h"
 #include "storage_mgr.h"
 //#include "tables.h"
@@ -129,13 +130,16 @@ RC shutdownRecordManager ()
 
     BM_BufferPool *pool = g_instance->bufferPool;
     if (pool != NULL) {
-        shutdownBufferPool(pool);
+        forceShutdownBufferPool(pool);
         free(pool);
         g_instance->bufferPool = NULL;
     }
 
     free(g_instance);
     g_instance = NULL;
+
+    //delete the pagefile
+
     return RC_OK;
 }
 
@@ -261,7 +265,7 @@ RC findTable(
     while (i<num) {
         size_t slot = i * sizeof(RM_PageSlotPtr);
         off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
-        printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
+        //printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
         fflush(stdout);
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
@@ -501,7 +505,7 @@ RC insertRecord (RM_TableData *rel, Record *record)
         TRY_OR_RETURN(markDirty(pool, &pageHandle));
         TRY_OR_RETURN(unpinPage(pool, &pageHandle));
 
-        printf("insertRecord: table = \"%s\", rid = %d:%d\n", rel->name, record->id.page, record->id.slot);
+        //printf("insertRecord: table = \"%s\", rid = %d:%d\n", rel->name, record->id.page, record->id.slot);
         return RC_OK;
 
     } while (1); // hdr->nextPageNum != -1 );
@@ -566,25 +570,93 @@ RC startScan (RM_TableData *rel, RM_ScanHandle *scan, Expr *cond)
 {
     scan->rel = rel;
     scan->mgmtData = (void*)cond;
+    scan->lastRID = malloc(sizeof(RID));
+    //start from beginning
+    scan->lastRID->page = rel->schema->dataPageNum;
+    scan->lastRID->slot = 0;
     return RC_OK;
 }
 
 //NOTE: if cond is NULL, then we will get all tuples
-RC next (RM_ScanHandle *scan, Record *record)
+RC next(RM_ScanHandle *scan, Record *record)
 {
+    BM_BufferPool *pool = g_instance->bufferPool;
+    
     //unpack
     Expr *cond = (Expr *)(scan->mgmtData);
     RM_TableData *rel = scan->rel;
+    RID *rid = scan->lastRID;
+    BM_PageHandle handle;
+    bool hit = false;
 
     //try to gettuple THEN check if it works with expr
+    do{
+        if (pinPage(pool, &handle, rid->page) != RC_OK) { return -1; }
+        //get page
+        RM_Page *page = (RM_Page *) handle.buffer;
+        RM_PageHeader *header = &page->header;
+
+        //check if tuple slot exists
+        if (rid->slot < header->numTuples){ //either there is a tuple in the page or another one
+           
+            //tuple exists. get it and check cond and return
+            Record *tmp = alloca(sizeof(Record));
+            getRecord(rel, *rid, tmp);
+
+            Value *result = (Value *) alloca(sizeof(Value));
+            //check condition here (call evalExpr)
+            evalExpr(tmp, rel->schema, cond, &result);
+            if(result->v.boolV == true){
+                //MARKER(result->v.boolV);
+                hit = true;
+                getRecord(rel, *rid, record);
+            }
+            rid->slot++;
+
+            if (hit) {
+                if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                //printf("Scan: found Tuple\n");
+                return RC_OK;
+            }
+            continue;
+            //set up to check next tuple or quit
+            if (rid->slot == header->numTuples){
+                if(header->nextPageNum != -1){ 
+                    free(rid);
+                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                    return RC_RM_NO_MORE_TUPLES; 
+                }
+                else {  
+                    rid->page = header->nextPageNum;
+                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                    rid->slot = 0;
+                    continue;
+                }
+            }
+        }
+        else if(header->nextPageNum != -1){ //case where tup in a diff page
+            rid->page = header->nextPageNum;
+            if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+            continue;   //try all pages
+        }
+        else { 
+            if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+            free(rid);
+            return RC_RM_NO_MORE_TUPLES; 
+        }
+        PANIC("control should not reach here");;
+    } while (1); //will quit when there isn't a new page to scan
 
 }
 
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
-    //unpin pages?
-    NOT_IMPLEMENTED();
+    //unpack struct and free it (freeing scanhandle is done by caller)
+    RID *rid = scan->lastRID;
+    free(rid);
+    //freeExpr done by caller
+    //unpin pages done in next()
     return RC_OK;
 } 
 
@@ -676,10 +748,14 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
     result->dt = dt;
     void *buf = record->data + offset;
     switch (dt) {
-        case DT_STRING:
-            result->v.stringV = (char *) malloc(strlen(buf) + 1);
-            strcpy(result->v.stringV, buf);
+        case DT_STRING: {
+            int len = schema->typeLength[attrNum];
+            char *str = (char *) malloc(len + 1);
+            memcpy(str, buf, len);
+            str[len+1] = '\0';
+            result->v.stringV = str;
             break;
+        }
 
         case DT_BOOL:
             result->v.boolV = *(bool *) buf;
@@ -720,26 +796,22 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
     result->dt = dt;
     void *buf = record->data + offset; //remember void ptr is 8 Bytes in length 
     switch (dt) {
-        case DT_STRING: 
-            ;//<--deleting this raises error due to next line
+        case DT_STRING: {
             int len = schema->typeLength[attrNum];      //get str length
-            strncpy((char*)buf, value->v.stringV, len); //copy string from Value
-            buf += offset;                              //increment buffer by offset for next
+            memcpy(buf, value->v.stringV, len); //copy string from Value
             break;
+        }
 
         case DT_BOOL:
             *(bool *) buf = value->v.boolV;  //set value to buf
-            buf += sizeof(bool);             //move buf ptr
             break;
 
         case DT_FLOAT:
             *(float *) buf = value->v.floatV; //set value to buf
-            buf += sizeof(float);             //move buf ptr
             break;
 
         case DT_INT:
             *(int *) buf = value->v.intV;   //set value to buf
-            buf += sizeof(int);             //move buf ptr
             break;
 
         default:

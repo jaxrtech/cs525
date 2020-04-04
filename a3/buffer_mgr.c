@@ -105,6 +105,14 @@ error:
     return rc;
 }
 
+RC forceShutdownBufferPool(BM_BufferPool *const bm){
+    forceFlushPool(bm); // write all dirty pages to disk
+    BP_Metadata *meta = bm->mgmtData;
+    meta->refCounter = 0;
+    return shutdownBufferPool(bm);
+
+}
+
 RC shutdownBufferPool(BM_BufferPool *const bm){
     forceFlushPool(bm); // write all dirty pages to disk
 	BP_Metadata *meta = bm->mgmtData;

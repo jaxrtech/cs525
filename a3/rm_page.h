@@ -101,3 +101,4 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len);
 
 void *RM_Page_getTuple(RM_Page *page, Record *record, RID rid);
 void *RM_Page_setTuple(RM_Page *self, Record *r);
+void *RM_Page_deleteTuple(RM_Page *self, RID rid);

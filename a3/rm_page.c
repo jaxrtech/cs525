@@ -121,7 +121,7 @@ void *RM_Page_deleteTuple(RM_Page *self, RID rid){
     RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
     RM_PageSlotLength n = tup->len;
 
-    memset(&tup->dataBegin, NULL, n);           //zero fill tuple
+    memset(&tup->dataBegin, 0, n);           //zero fill tuple
     memset(&off, NULL, sizeof(RM_PageSlotPtr)); //zero fill slot
 
     //raise flag in header if deleted one of the middle tups
