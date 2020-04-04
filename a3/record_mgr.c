@@ -319,6 +319,7 @@ RC closeTable (RM_TableData *rel)
 }
 
 /* close a table and mark pages as empty */
+
 RC deleteTable (char *name)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
@@ -377,7 +378,7 @@ RC deleteTable (char *name)
     // Null the schema tuple data
     RM_Page_deleteTuple(pg, *rid);
 
-    TRY_OR_RETURN(forcePage(pool, &handle));
+    TRY_OR_RETURN(forcePage(pool, &handle)); ////Note: FOR SOME REASON it also re-inits the DB
     TRY_OR_RETURN(unpinPage(pool, &handle));
 }
 

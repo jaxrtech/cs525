@@ -113,7 +113,7 @@ void *RM_Page_deleteTuple(RM_Page *self, RID rid){
     //locate tuple
     uint16_t numTuples = self->header.numTuples;
     int slotNum = rid.slot; 
-    if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
+    if (slotNum > numTuples) PANIC("slotNum > max slots in page");
 
     size_t slot = slotNum * sizeof(RM_PageSlotPtr);
     RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
@@ -124,8 +124,10 @@ void *RM_Page_deleteTuple(RM_Page *self, RID rid){
     memset(&tup->dataBegin, NULL, n);           //zero fill tuple
     memset(&off, NULL, sizeof(RM_PageSlotPtr)); //zero fill slot
 
-    //raise flag in header: RM_PAGE_FLAGS_HAS_FREE_PTRS
-    self->header.flags = RM_PAGE_FLAGS_HAS_TRAILING;
+    //raise flag in header if deleted one of the middle tups
+    //or raise flag if deleted last tup
+    if (slotNum < numTuples){ self->header.flags = RM_PAGE_FLAGS_HAS_TRAILING; }
+    else { /* set freespaceTrailingOffset here*/ }
     //NOT_IMPLEMENTED(); //store free space pointer
 }
 
