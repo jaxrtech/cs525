@@ -1,4 +1,5 @@
 #include "record_mgr.h"
+#include "storage_mgr.h"
 //#include "tables.h"
 
 #include <stdio.h>
@@ -340,25 +341,44 @@ RC insertRecord (RM_TableData *rel, Record *record)
     //get page that holds the records for the data. Assume overflow handled in RM_ReserveTuple(...);
     int pageNum = rel->schema->dataPageNum;
     BM_BufferPool *pool = g_instance->bufferPool;
+    BP_Metadata *meta = pool->mgmtData;
 
     BM_PageHandle pageHandle = {};
-    TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNum));
+    //loop through all available pages in relation
+    do{
+        TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNum));
 
-    RM_Page *page = (RM_Page *) pageHandle.buffer;
-    size_t size = getRecordSize(rel->schema);
-    RM_PageTuple *tup = RM_Page_reserveTuple(page, size);
-    if (tup == NULL) {
-        unpinPage(pool, &pageHandle);
-        return RC_RM_NO_MORE_TUPLES;
-    }
+        RM_Page *page = (RM_Page *) pageHandle.buffer;
+        RM_PageHeader *hdr = &page->header;
 
-    record->id.page = pageNum;
-    record->id.slot = tup->slotId;
-    memcpy(&tup->dataBegin, record->data, size);
+        size_t size = getRecordSize(rel->schema);
+        RM_PageTuple *tup = RM_Page_reserveTuple(page, size);
+        if (tup == NULL) {
+            unpinPage(pool, &pageHandle);
+            //check overflow pages. if none, create and link them
+            if(hdr->nextPageNum != -1){
+                pageNum = (int) hdr->nextPageNum;
+                continue; //try with next page
+            } else {
+                //create new page
+                
+                //link new page to 
+                meta->fileHandle->totalNumPages++;
+                hdr->nextPageNum = meta->fileHandle->totalNumPages-1;
+                exit(0);
+            }
 
-    TRY_OR_RETURN(markDirty(pool, &pageHandle));
-    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+            return RC_RM_NO_MORE_TUPLES; //cannot create a new page
+        }
 
+        record->id.page = pageNum;
+        record->id.slot = tup->slotId;
+        memcpy(&tup->dataBegin, record->data, size);
+
+        TRY_OR_RETURN(markDirty(pool, &pageHandle));
+        TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+
+    } while (1); // hdr->nextPageNum != -1 );
     return RC_OK;
 }
 

@@ -77,7 +77,6 @@ main (void)
 {
 	testName = "";
 	testInsertManyRecords();
-	printf("TEST RECORDS:\n");
 	testRecords();
 	testCreateTableAndInsert();
 	testUpdateTable();

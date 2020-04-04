@@ -17,10 +17,11 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) 
     self->header.freespaceLowerOffset = 0;                      //next available byte in page
     self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
     self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
+    self->header.nextPageNum = -1;                              //-1 if no tuples on another page
     return self;
 }
 
-RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
+RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) { 
     if (len > RM_PAGE_DATA_SIZE) {
         PANIC("`len` was greater than `RM_PAGE_DATA_SIZE`");
     }
@@ -37,6 +38,8 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     uint16_t minTupleSpaceRequired = sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength) + len;
     uint16_t minSpaceRequired = minPtrSpaceRequired + minTupleSpaceRequired;
     uint16_t spaceAvailable = self->header.freespaceUpperEnd - self->header.freespaceLowerOffset;
+    
+    //check if there is no space in page
     if (spaceAvailable < minSpaceRequired) {
         return NULL;
     }
