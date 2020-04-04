@@ -613,11 +613,11 @@ RC next(RM_ScanHandle *scan, Record *record)
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
-    NOT_IMPLEMENTED();
-    //unpack struct and free it (freeing scan is done by caller)
-    Expr *cond = (Expr *) scan->mgmtData;
-
-    //unpin pages?
+    //unpack struct and free it (freeing scanhandle is done by caller)
+    RID *rid = scan->lastRID;
+    free(rid);
+    //freeExpr done by caller
+    //unpin pages done in next()
     return RC_OK;
 } 
 

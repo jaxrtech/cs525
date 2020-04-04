@@ -76,13 +76,13 @@ int
 main (void) 
 {
 	testName = "";
-	//testInsertManyRecords();
-	//testRecords();
-	//testCreateTableAndInsert();
-	//testUpdateTable();
+	testInsertManyRecords();
+	testRecords(); //fails
+	testCreateTableAndInsert();
+	testUpdateTable();
 	testScans();
-	//testScansTwo();
-	//testMultipleScans();
+	testScansTwo();
+	testMultipleScans();
 
 	return 0;
 }
@@ -480,7 +480,6 @@ void testScans (void)
 		{
 			int rSize = getRecordSize(schema);
 			Record *tv = fromTestRecord(schema, scanOneResult[i]);
-			//foundScan[i] = ((diff=memcmp(tv, r->data, rSize)) == 0) ? true : false;
 			if ((diff=memcmp( (tv->data), (r->data), (rSize) )) == 0){
 				foundScan[i] = true;
 			}
@@ -490,7 +489,7 @@ void testScans (void)
 		printf("scan next error: %d\n", rc);
 		TEST_CHECK(rc); 
 	}
-	//TEST_CHECK(closeScan(sc)); //implement me (or comment out temporarily)
+	TEST_CHECK(closeScan(sc)); //implement me (or comment out temporarily)
 	for(i = 0; i < scanSizeOne; i++)
 		ASSERT_TRUE(foundScan[i], "check for scan result");
 
