@@ -35,7 +35,7 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
 
     // Check if we have enough empty space to write the tuple
     uint16_t minPtrSpaceRequired = sizeof(RM_PageSlotPtr);
-    uint16_t minTupleSpaceRequired = sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength) + len;
+    uint16_t minTupleSpaceRequired = RM_TUP_SIZE(len);
     uint16_t minSpaceRequired = minPtrSpaceRequired + minTupleSpaceRequired;
     uint16_t spaceAvailable = self->header.freespaceUpperEnd - self->header.freespaceLowerOffset;
     

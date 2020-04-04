@@ -93,6 +93,9 @@ typedef struct PACKED_STRUCT RM_PageTuple {
     char dataBegin;
 } RM_PageTuple;
 
+#define RM_TUP_SIZE(DATA_SIZE) \
+    sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength) + (DATA_SIZE)
+
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
 RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len);
 
