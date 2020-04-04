@@ -108,7 +108,7 @@ testRecords (void)
 	freeVal(value);
 
 	getAttr(r, schema, 1, &value);
-	OP_TRUE(stringToValue("saaaa"), value, valueEquals, "second attr"); //FAIL
+	OP_TRUE(stringToValue("saaaa"), value, valueEquals, "second attr");
 	freeVal(value);
 
 	getAttr(r, schema, 2, &value);
@@ -302,7 +302,7 @@ testUpdateTable (void)
 	rids = (RID *) malloc(sizeof(RID) * numInserts);
 
 	TEST_CHECK(initRecordManager(NULL));
-	TEST_CHECK(createTable("test_table_r",schema)); //FAIL
+	TEST_CHECK(createTable("test_table_r",schema));
 	TEST_CHECK(openTable(table, "test_table_r"));
 
 	// insert rows into table
