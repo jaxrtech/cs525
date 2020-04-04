@@ -310,10 +310,47 @@ RC closeTable (RM_TableData *rel)
     return RC_OK;
 }
 
+/* close a table and mark pages as empty */
 RC deleteTable (char *name)
 {
-    /* close a table and delete the file from disk (or re-init FANCY_DB) */
-    NOT_IMPLEMENTED();
+    BM_BufferPool *pool = g_instance->bufferPool;
+    forceFlushPool(pool); //write all pages to disk just in case
+
+    //open temporary relation in memory so we can scan its pages
+    RM_TableData *rel = (RM_TableData *) malloc(sizeof(RM_TableData));
+    openTable(rel, name);
+    
+    int pageNum = rel->schema->dataPageNum;
+    BM_PageHandle handle;
+
+    //mark pages as empty in relation
+    do{
+        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
+            RM_Page *page = (RM_Page *) handle.buffer;
+            pageNum = page->header.nextPageNum;
+
+            NOT_IMPLEMENTED(); //mark page as empty here
+
+        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+
+    } while ( pageNum != -1 ); //will quit when there isn't a new page delete
+
+    closeTable(rel); //frees rel 
+
+    //delete tuple in schema page
+    TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_SCHEMA));
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    //get the record id for the schema tuple
+    RID *rid = (RID *) malloc(sizeof(RID));
+    rid->page = RM_PAGE_SCHEMA;
+    NOT_IMPLEMENTED(); //get the slot number for the relation tuple
+
+    // Null the schema tuple data
+    RM_Page_deleteTuple(page, rid);
+
+    TRY_OR_RETURN(forcePage(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
 }
 
 int getNumTuples (RM_TableData *rel)
@@ -406,7 +443,19 @@ RC insertRecord (RM_TableData *rel, Record *record)
 RC deleteRecord (RM_TableData *rel, RID id)
 {
 
-    NOT_IMPLEMENTED();
+
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BM_PageHandle handle;
+
+    //pin page containing record if it exists
+    TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    RM_Page_deleteTuple(page, id);
+
+    TRY_OR_RETURN(markDirty(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
+    return RC_OK;
 }
 
 //take a record that exists in the table and update it

@@ -73,7 +73,6 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
 //assume we always have the right page from calling method 
 void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     uint16_t numTuples = self->header.numTuples;
-    printf("numtups: %d\n", numTuples);
     int slotNum = rid.slot; 
     if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
 
@@ -95,7 +94,6 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
 void *RM_Page_setTuple(RM_Page *self, Record *r){
 
     uint16_t numTuples = self->header.numTuples;
-    printf("numtups: %d\n", numTuples);
     int slotNum = r->id.slot; 
     if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
 
@@ -108,4 +106,26 @@ void *RM_Page_setTuple(RM_Page *self, Record *r){
 
     //copy record into tuple
     memcpy(&tup->dataBegin, (void *)r->data, n);
+}
+
+void *RM_Page_deleteTuple(RM_Page *self, RID rid){
+    
+    //locate tuple
+    uint16_t numTuples = self->header.numTuples;
+    int slotNum = rid.slot; 
+    if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
+
+    size_t slot = slotNum * sizeof(RM_PageSlotPtr);
+    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
+
+    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
+    RM_PageSlotLength n = tup->len;
+
+    memset(&tup->dataBegin, NULL, n);           //zero fill tuple
+    memset(&off, NULL, sizeof(RM_PageSlotPtr)); //zero fill slot
+
+    //raise flag in header: RM_PAGE_FLAGS_HAS_FREE_PTRS
+    self->header.flags = RM_PAGE_FLAGS_HAS_TRAILING;
+
+    //NOT_IMPLEMENTED(); //store free space pointer
 }

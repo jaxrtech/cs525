@@ -402,7 +402,7 @@ testInsertManyRecords(void)
 		printf("TEST OK %d\n", i+1);
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, realInserts[i]), r, schema, "compare records");
 	}
-	printf("%d records in (reopened) \"test_table_t\" are OK\n", numInserts);
+	printf("%d records in (reopened) \"test_table_t\" are OK", numInserts);
 	r = fromTestRecord(schema, updates[0]);
 	r->id = rids[randomRec];
 	TEST_CHECK(updateRecord(table,r));
