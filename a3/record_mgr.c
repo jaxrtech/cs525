@@ -140,7 +140,7 @@ RC shutdownRecordManager ()
 
     //delete the pagefile
     if (destroyPageFile(RM_DEFAULT_FILENAME) != RC_OK) {
-        //return RC_FILE_DESTROY_ERROR; 
+        return RC_FILE_DESTROY_ERROR; 
     }
 
     return RC_OK;
