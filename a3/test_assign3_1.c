@@ -387,10 +387,10 @@ testInsertManyRecords(void)
 		r = fromTestRecord(schema, realInserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
-		//printf("Inserted record: %d\n", i-1);
 	}
 	int numtuples = getNumTuples(table);
 	printf("test_table_t (numtuples) = %d\n", numtuples);
+	printf("Inserted %d records in \"test_table_t\"\n", numInserts);
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(openTable(table, "test_table_t"));
 
@@ -402,7 +402,7 @@ testInsertManyRecords(void)
 		printf("TEST OK %d\n", i+1);
 		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, realInserts[i]), r, schema, "compare records");
 	}
-
+	printf("%d records in (reopened) \"test_table_t\"\n are OK", numInserts);
 	r = fromTestRecord(schema, updates[0]);
 	r->id = rids[randomRec];
 	TEST_CHECK(updateRecord(table,r));

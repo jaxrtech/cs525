@@ -336,7 +336,7 @@ int getNumTuples (RM_TableData *rel)
 
         if (unpinPage(pool, &handle) != RC_OK) { return -1; }
 
-    } while ( pageNum != -1 );
+    } while ( pageNum != -1 ); //will quit when there isn't a new page to scan
 
     return totalNumTups;
 }
@@ -413,15 +413,17 @@ RC updateRecord (RM_TableData *rel, Record *record)
 
 RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to any page (even overflow pages)
 {
+    MARKER(0);
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle handle;
 
     //pin page containing record if it exists
     TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
-
     RM_Page *page = (RM_Page *) handle.buffer;
+
     RM_Page_getTuple(page, record, id); //SEE DEFINITION -- NEEDS TESTING
 
+    unpinPage(pool, &handle);
     return RC_OK;
 }
 
