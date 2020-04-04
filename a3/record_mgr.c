@@ -145,6 +145,14 @@ RC createTable (char *name, Schema *schema)
 {
     RC rc;
 
+    //check if table with same name already exists
+    RM_TableData *temp = (RM_TableData *) malloc(sizeof(RM_TableData));
+    if ((openTable(temp, name)) == RC_OK){
+        closeTable(temp);
+        return RC_IM_KEY_ALREADY_EXISTS;
+    }
+    free(temp);
+
     uint64_t tableNameLength = strlen(name);
     if (tableNameLength <= 0 || tableNameLength > RM_MAX_ATTR_NAME_LEN) {
         return RC_RM_NAME_TOO_LONG;       
@@ -352,35 +360,68 @@ RC closeTable (RM_TableData *rel)
     return RC_OK;
 }
 
+/* close a table and mark pages as empty */
+
 RC deleteTable (char *name)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
+    forceFlushPool(pool); //write all pages to disk just in case
 
-    BM_PageHandle schemaPageHandle = {};
-    struct RM_SCHEMA_FORMAT_T schema = {};
-    RM_PageTuple *tup = NULL;
+    //open temporary relation in memory so we can scan its pages
+    RM_TableData *rel = (RM_TableData *) malloc(sizeof(RM_TableData));
+    openTable(rel, name);
+    
+    int pageNum = rel->schema->dataPageNum;
+    BM_PageHandle handle;
 
-    TRY_OR_RETURN(findTable(name, &schemaPageHandle, &tup, &schema));
-    RM_Page *schemaPage = (RM_Page *) schemaPageHandle.buffer;
+    //mark pages as empty in relation
+    do{
+        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
+            RM_Page *page = (RM_Page *) handle.buffer;
+            pageNum = page->header.nextPageNum;
 
-    int pageNum = BF_AS_U16(schema.tblDataPageNum);
-    do {
-        BM_PageHandle dataPageHandle = {};
-        TRY_OR_RETURN(pinPage(pool, &dataPageHandle, pageNum));
-        RM_Page *dataPage = (RM_Page *) dataPageHandle.buffer;
-        pageNum = dataPage->header.nextPageNum;
-        memset(dataPage, 0, PAGE_SIZE);
-        TRY_OR_RETURN(forcePage(pool, &dataPageHandle));
-        TRY_OR_RETURN(unpinPage(pool, &dataPageHandle));
-    } while (pageNum > 0);
+            //NOT_IMPLEMENTED(); //mark page as empty here
 
-    memset(tup, 0, RM_TUP_SIZE(tup->len));
-    schemaPage->header.numTuples--;
+        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
 
-    TRY_OR_RETURN(forcePage(pool, &schemaPageHandle));
-    TRY_OR_RETURN(unpinPage(pool, &schemaPageHandle));
+    } while ( pageNum != -1 ); //will quit when there isn't a new page delete
 
-    return RC_OK;
+    closeTable(rel); //frees rel 
+
+    //delete tuple in schema page
+    TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_SCHEMA));
+    RM_Page *pg = (RM_Page *) handle.buffer;
+    RM_PageHeader *hdr = &pg->header;
+
+    //get the record id for the schema tuple
+    RID *rid = (RID *) malloc(sizeof(RID));
+    rid->page = RM_PAGE_SCHEMA;
+
+    //get the slot number for the relation tuple
+    RM_PageTuple *tup;
+    RM_PageSlotPtr *off;
+    uint16_t num = hdr->numTuples;
+    struct RM_SCHEMA_FORMAT_T schemaMsg;
+    int i=0;
+    while (i<num) {
+        size_t slot = i * sizeof(RM_PageSlotPtr);
+        off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
+        fflush(stdout);
+        tup = (RM_PageTuple *) (&pg->dataBegin + *off);
+
+        schemaMsg = RM_SCHEMA_FORMAT;
+        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
+        if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
+            rid->slot = i; //mark RID slot
+            break;
+        }
+    }
+
+    // Null the schema tuple data
+    RM_Page_deleteTuple(pg, *rid);
+
+    TRY_OR_RETURN(forcePage(pool, &handle)); ////Note: FOR SOME REASON it also re-inits the DB
+    TRY_OR_RETURN(unpinPage(pool, &handle));
 }
 
 int getNumTuples (RM_TableData *rel)
@@ -473,7 +514,19 @@ RC insertRecord (RM_TableData *rel, Record *record)
 RC deleteRecord (RM_TableData *rel, RID id)
 {
 
-    NOT_IMPLEMENTED();
+
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BM_PageHandle handle;
+
+    //pin page containing record if it exists
+    TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    RM_Page_deleteTuple(page, id);
+
+    TRY_OR_RETURN(markDirty(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
+    return RC_OK;
 }
 
 //take a record that exists in the table and update it
