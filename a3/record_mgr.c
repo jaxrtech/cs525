@@ -543,7 +543,6 @@ RC next(RM_ScanHandle *scan, Record *record)
     //unpack
     Expr *cond = (Expr *)(scan->mgmtData);
     RM_TableData *rel = scan->rel;
-    uint16_t numTups;
     RID *rid = scan->lastRID;
     BM_PageHandle handle;
     bool hit = false;
@@ -554,6 +553,7 @@ RC next(RM_ScanHandle *scan, Record *record)
         //get page
         RM_Page *page = (RM_Page *) handle.buffer;
         RM_PageHeader *header = &page->header;
+
         //check if tuple slot exists
         if (rid->slot < header->numTuples){ //either there is a tuple in the page or another one
            
@@ -565,6 +565,7 @@ RC next(RM_ScanHandle *scan, Record *record)
             //check condition here (call evalExpr)
             evalExpr(tmp, rel->schema, cond, &result);
             if(result->v.boolV == true){
+                //MARKER(result->v.boolV);
                 hit = true;
                 getRecord(rel, *rid, record);
             }
@@ -575,9 +576,10 @@ RC next(RM_ScanHandle *scan, Record *record)
 
             if (hit) {
                 if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                //printf("Scan: found Tuple\n");
                 return RC_OK;
             }
-            
+            continue;
             //set up to check next tuple or quit
             if (rid->slot == header->numTuples){
                 if(header->nextPageNum != -1){ 
@@ -603,6 +605,7 @@ RC next(RM_ScanHandle *scan, Record *record)
             free(rid);
             return RC_RM_NO_MORE_TUPLES; 
         }
+        PANIC("control should not reach here");;
     } while (1); //will quit when there isn't a new page to scan
 
 }
