@@ -305,7 +305,7 @@ RC closeTable (RM_TableData *rel)
     free(rel->schema->keyAttrs);
     free(rel->schema);
 
-    free(rel);
+    // IMPORTANT: caller is in-charge of freeing the structure itself, if necessary
 
     return RC_OK;
 }
@@ -350,24 +350,25 @@ RC insertRecord (RM_TableData *rel, Record *record)
     BP_Metadata *meta = pool->mgmtData;
 
     BM_PageHandle pageHandle = {};
+    size_t recordSize = getRecordSize(rel->schema);
+
     //loop through all available pages in relation
-    do{
+    do {
         TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNum));
 
         RM_Page *page = (RM_Page *) pageHandle.buffer;
-        RM_PageHeader *hdr = &page->header;
+        RM_PageHeader *pageHeader = &page->header;
 
-        size_t size = getRecordSize(rel->schema);
-        RM_PageTuple *tup = RM_Page_reserveTuple(page, size);
+        RM_PageTuple *tup = RM_Page_reserveTuple(page, recordSize);
         if (tup == NULL) {
             unpinPage(pool, &pageHandle);
             //check overflow pages. if none, create and link them
-            if(hdr->nextPageNum != -1){
-                pageNum = (int) hdr->nextPageNum;
+            if (pageHeader->nextPageNum != -1) {
+                pageNum = (int) pageHeader->nextPageNum;
                 continue; //try with next page
             } else {
+                int newpageNum = meta->fileHandle->totalNumPages;
                 meta->fileHandle->totalNumPages++;
-                int newpageNum = meta->fileHandle->totalNumPages-1;
 
                 //create new page
                 BM_PageHandle newdata = {};
@@ -376,7 +377,7 @@ RC insertRecord (RM_TableData *rel, Record *record)
                 TRY_OR_RETURN(forcePage(pool, &newdata));
                 TRY_OR_RETURN(unpinPage(pool, &newdata));
                 //link new page to table
-                hdr->nextPageNum = newpageNum;
+                pageHeader->nextPageNum = newpageNum;
 
                 //set page to reserve tuple and try again
                 pageNum = newpageNum;
@@ -387,10 +388,12 @@ RC insertRecord (RM_TableData *rel, Record *record)
 
         record->id.page = pageNum;
         record->id.slot = tup->slotId;
-        memcpy(&tup->dataBegin, record->data, size);
+        memcpy(&tup->dataBegin, record->data, recordSize);
 
         TRY_OR_RETURN(markDirty(pool, &pageHandle));
         TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+
+        printf("insertRecord: table = \"%s\", rid = %d:%d\n", rel->name, record->id.page, record->id.slot);
         return RC_OK;
 
     } while (1); // hdr->nextPageNum != -1 );
