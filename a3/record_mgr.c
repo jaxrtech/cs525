@@ -635,7 +635,7 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
     void *buf = record->data + offset;
     switch (dt) {
         case DT_STRING:
-            result->v.stringV = (char *) malloc(strlen(buf) + 1);
+            result->v.stringV = (char *) malloc(strlen(buf)+1);
             strcpy(result->v.stringV, buf);
             break;
 
