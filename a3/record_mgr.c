@@ -409,14 +409,25 @@ RC deleteRecord (RM_TableData *rel, RID id)
     NOT_IMPLEMENTED();
 }
 
+//take a record that exists in the table and update it
 RC updateRecord (RM_TableData *rel, Record *record)
 {
-    NOT_IMPLEMENTED();
+    BM_BufferPool *pool = g_instance->bufferPool;
+    BM_PageHandle handle;
+
+    //pin page containing record if it exists
+    TRY_OR_RETURN(pinPage(pool, &handle, record->id.page)); //page nonexistent or RC_OK
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    RM_Page_setTuple(page, record);
+
+    TRY_OR_RETURN(markDirty(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
+    return RC_OK;
 }
 
 RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to any page (even overflow pages)
 {
-    MARKER(0);
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle handle;
 
@@ -424,8 +435,7 @@ RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to 
     TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
     RM_Page *page = (RM_Page *) handle.buffer;
 
-    RM_Page_getTuple(page, record, id); //SEE DEFINITION -- NEEDS TESTING
-
+    RM_Page_getTuple(page, record, id);
     unpinPage(pool, &handle);
     return RC_OK;
 }

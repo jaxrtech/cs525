@@ -91,3 +91,21 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     record->id = rid;
     record->data = buf;
 }
+
+void *RM_Page_setTuple(RM_Page *self, Record *r){
+
+    uint16_t numTuples = self->header.numTuples;
+    printf("numtups: %d\n", numTuples);
+    int slotNum = r->id.slot; 
+    if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
+
+    //get position of tuple
+    size_t slot = slotNum * sizeof(RM_PageSlotPtr);
+    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
+
+    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
+    RM_PageSlotLength n = tup->len;
+
+    //copy record into tuple
+    memcpy(&tup->dataBegin, (void *)r->data, n);
+}
