@@ -262,7 +262,7 @@ RC openTable (RM_TableData *rel, char *name)
     while (i<num) {
         size_t slot = i * sizeof(RM_PageSlotPtr);
         off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
-        printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
+        //printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
         fflush(stdout);
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
@@ -463,7 +463,7 @@ RC insertRecord (RM_TableData *rel, Record *record)
         TRY_OR_RETURN(markDirty(pool, &pageHandle));
         TRY_OR_RETURN(unpinPage(pool, &pageHandle));
 
-        printf("insertRecord: table = \"%s\", rid = %d:%d\n", rel->name, record->id.page, record->id.slot);
+        //printf("insertRecord: table = \"%s\", rid = %d:%d\n", rel->name, record->id.page, record->id.slot);
         return RC_OK;
 
     } while (1); // hdr->nextPageNum != -1 );
@@ -530,48 +530,79 @@ RC startScan (RM_TableData *rel, RM_ScanHandle *scan, Expr *cond)
     scan->mgmtData = (void*)cond;
     scan->lastRID = malloc(sizeof(RID));
     //start from beginning
-    lastRID.page = rel->schema->dataPageNum;
-    lastRID.slot = 0;
+    scan->lastRID->page = rel->schema->dataPageNum;
+    scan->lastRID->slot = 0;
     return RC_OK;
 }
 
 //NOTE: if cond is NULL, then we will get all tuples
 RC next(RM_ScanHandle *scan, Record *record)
 {
-    RC rc;
+    BM_BufferPool *pool = g_instance->bufferPool;
+    
     //unpack
     Expr *cond = (Expr *)(scan->mgmtData);
     RM_TableData *rel = scan->rel;
     uint16_t numTups;
     RID *rid = scan->lastRID;
-    int pageNum = rid.page;
-
     BM_PageHandle handle;
+    bool hit = false;
 
     //try to gettuple THEN check if it works with expr
     do{
-        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
+        if (pinPage(pool, &handle, rid->page) != RC_OK) { return -1; }
         //get page
         RM_Page *page = (RM_Page *) handle.buffer;
         RM_PageHeader *header = &page->header;
         //check if tuple slot exists
-        if (scan->lastRID.slot < header->numTuples){
+        if (rid->slot < header->numTuples){ //either there is a tuple in the page or another one
+           
+            //tuple exists. get it and check cond and return
+            Record *tmp = malloc(sizeof(Record));
+            getRecord(rel, *rid, tmp);
 
+            Value *result = (Value *) malloc(sizeof(Value));
+            //check condition here (call evalExpr)
+            evalExpr(tmp, rel->schema, cond, &result);
+            if(result->v.boolV == true){
+                hit = true;
+                getRecord(rel, *rid, record);
+            }
+            //free temp structs
+            free(result);
+            free(tmp);
+            rid->slot++;
 
-            if (scan->lastRID.slot == header->numTuples){
-
+            if (hit) {
+                if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                return RC_OK;
+            }
+            
+            //set up to check next tuple or quit
+            if (rid->slot == header->numTuples){
+                if(header->nextPageNum != -1){ 
+                    free(rid);
+                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                    return RC_RM_NO_MORE_TUPLES; 
+                }
+                else {  
+                    rid->page = header->nextPageNum;
+                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+                    rid->slot = 0;
+                    continue;
+                }
             }
         }
-        else if(header->nextPageNum != -1){
-            pageNum = header->nextPageNum;
+        else if(header->nextPageNum != -1){ //case where tup in a diff page
+            rid->page = header->nextPageNum;
+            if (unpinPage(pool, &handle) != RC_OK) { return -1; }
             continue;   //try all pages
         }
-        return RC_RM_NO_MORE_TUPLES;
-
-        pageNum = header->nextPageNum;
-
-        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
-
+        else { 
+            if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+            free(rid);
+            return RC_RM_NO_MORE_TUPLES; 
+        }
     } while (1); //will quit when there isn't a new page to scan
 
 }
@@ -581,7 +612,7 @@ RC closeScan (RM_ScanHandle *scan)
 {
     NOT_IMPLEMENTED();
     //unpack struct and free it (freeing scan is done by caller)
-    Expr *cond = (Expr *) scan->cond;
+    Expr *cond = (Expr *) scan->mgmtData;
 
     //unpin pages?
     return RC_OK;

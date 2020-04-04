@@ -477,13 +477,16 @@ void testScans (void)
 	{
 		for(i = 0; i < scanSizeOne; i++)
 		{
-			if (memcmp(fromTestRecord(schema, scanOneResult[i])->data,r->data,getRecordSize(schema)) == 0)
-				foundScan[i] = TRUE;
+			if (memcmp(fromTestRecord(schema, scanOneResult[i])->data,r->data,getRecordSize(schema)) == 0){
+				foundScan[i] = true;
+			}else{
+				foundScan[i] = false;
+			}
 		}
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);
-	TEST_CHECK(closeScan(sc));
+		TEST_CHECK(rc); 
+	TEST_CHECK(closeScan(sc)); //implement me (or comment out temporarily)
 	for(i = 0; i < scanSizeOne; i++)
 		ASSERT_TRUE(foundScan[i], "check for scan result");
 
