@@ -85,7 +85,12 @@ typedef uint16_t RM_PageSlotLength;
 typedef struct PACKED_STRUCT RM_PageTuple {
     RM_PageSlotId slotId;
     RM_PageSlotLength len;
-    void *data;
+
+    /**
+     * Used as a marker for the beginning of the data buffer.
+     * Should always be used as `&page->dataBegin`.
+     */
+    char dataBegin;
 } RM_PageTuple;
 
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);

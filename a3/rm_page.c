@@ -64,35 +64,27 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     *slotPtr = tupOffset;
     tup->slotId = slotId;
     tup->len = len;
-
-    void *buf = ((char *) tup) + sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength);
-    tup->data = buf;
-//    memset(buf, 0xef, len);
     return tup;
 }
 
 //assume we always have the right page from calling method 
 void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
-    printf("NEEDS TESTING: RM_Page_getTuple(...) in rm_page.c\n");
-    //get the bounds for our scan
-    uint16_t maxSlotCount = self->header.freespaceLowerOffset;
-    uint16_t tupOffset = self->header.freespaceUpperEnd;
-
-    //Get num Tuples and slot number
     uint16_t numTuples = self->header.numTuples;
     printf("numtups: %d\n", numTuples);
     int slotNum = rid.slot; 
-    if (slotNum > maxSlotCount) PANIC("slotNum > max slots in page");
+    if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
 
     //get position of tuple
-    tupOffset -= (numTuples - slotNum);
+    size_t slot = slotNum * sizeof(RM_PageSlotPtr);
+    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
+
     //printf("tupOffset: %d\n", tupOffset);
-    RM_PageTuple *tup = (RM_PageTuple *) (self->dataBegin + tupOffset);
+    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
     //printf("tupdata: %s\n", self->data);
     //read the data and assign it into the record ptr
     RM_PageSlotLength n = tup->len;
     void *buf = malloc(n);
-    memcpy(buf, tup->data, n);
+    memcpy(buf, &tup->dataBegin, n);
 
     record->id = rid;
     record->data = buf;

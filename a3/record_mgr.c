@@ -213,7 +213,7 @@ RC createTable (char *name, Schema *schema)
     //
     // Write out of the schema tuple data
     //
-    void *tupleBuffer = tup->data;
+    void *tupleBuffer = &tup->dataBegin;
     BF_write((BF_MessageElement *) &schemaDisk, tupleBuffer, BF_NUM_ELEMENTS(sizeof(schemaDisk)));
     if ((rc = forcePage(pool, &pageHandle)) != RC_OK) {
         goto finally;
@@ -254,7 +254,7 @@ RC openTable (RM_TableData *rel, char *name)
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
         schemaMsg = RM_SCHEMA_FORMAT;
-        BF_read((BF_MessageElement *) &schemaMsg, tup, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
+        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
         if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
             hit = true;
             break;
@@ -354,7 +354,7 @@ RC insertRecord (RM_TableData *rel, Record *record)
 
     record->id.page = pageNum;
     record->id.slot = tup->slotId;
-    memcpy(tup->data, record->data, size);
+    memcpy(&tup->dataBegin, record->data, size);
 
     TRY_OR_RETURN(markDirty(pool, &pageHandle));
     TRY_OR_RETURN(unpinPage(pool, &pageHandle));
