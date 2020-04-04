@@ -239,8 +239,11 @@ RC createTable (char *name, Schema *schema)
         return rc;
 }
 
-//move a table to memory by reading it from disk
-RC openTable (RM_TableData *rel, char *name)
+RC findTable(
+        char *name,
+        BM_PageHandle *page_out,
+        struct RM_PageTuple **tup_out,
+        struct RM_SCHEMA_FORMAT_T *msg_out)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle pageHandle = {};
@@ -254,10 +257,10 @@ RC openTable (RM_TableData *rel, char *name)
     RM_PageSlotPtr *off; //deref this address for the offset
 
     //find the pointer in the data that points to the proper table tuple (or error if table doesn't exist)
-    RM_PageTuple *tup;
+    RM_PageTuple *tup = NULL;
     uint16_t num = hdr->numTuples;
     bool hit = false;
-    struct RM_SCHEMA_FORMAT_T schemaMsg;
+    struct RM_SCHEMA_FORMAT_T schemaMsg = {};
     int i=0;
     while (i<num) {
         size_t slot = i * sizeof(RM_PageSlotPtr);
@@ -277,7 +280,41 @@ RC openTable (RM_TableData *rel, char *name)
     if (!hit) {
         return RC_RM_UNKNOWN_TABLE;
     }
+    
+    if (page_out != NULL) {
+        *page_out = pageHandle;
+    }
+    
+    if (tup_out != NULL) {
+        *tup_out = tup;
+    }
+    
+    if (msg_out != NULL) {
+        *msg_out = schemaMsg;
+    }
+    
+    return RC_OK;
+}
 
+typedef struct RM_TableMetadata {
+    BM_PageHandle schemaHandle;
+} RM_TableMetadata;
+
+//move a table to memory by reading it from disk
+RC openTable (RM_TableData *rel, char *name)
+{
+    int i;
+    RC rc;
+    
+    struct RM_SCHEMA_FORMAT_T schemaMsg = {};
+    RM_TableMetadata *meta = malloc(sizeof(RM_TableMetadata));
+    if ((rc = findTable(name, &meta->schemaHandle, NULL, &schemaMsg))!=RC_OK) {
+        free(meta);
+        return rc;
+    }
+    
+    rel->mgmtData = meta;
+    
     int numKeys = BF_ARRAY_U8_LEN(schemaMsg.tblKeys);
     int numAttrs = BF_AS_U8(schemaMsg.tblNumAttr);
     rel->name = BF_AS_STR(schemaMsg.tblName);
@@ -287,14 +324,14 @@ RC openTable (RM_TableData *rel, char *name)
     rel->schema->keySize = numKeys;
     rel->schema->keyAttrs = calloc(numKeys, sizeof(int));
     uint8_t *keyIndexes = BF_AS_ARRAY_U8(schemaMsg.tblKeys);
-    for (int i = 0; i < numKeys; i++) {
+    for (i = 0; i < numKeys; i++) {
         rel->schema->keyAttrs[i] = keyIndexes[i];
     }
     rel->schema->dataTypes = calloc(numAttrs, sizeof(enum DataType));
     rel->schema->attrNames = calloc(numAttrs, sizeof(char *));
     rel->schema->typeLength = calloc(numAttrs, sizeof(int));
     struct RM_SCHEMA_ATTR_FORMAT_T *dataTypes = (struct RM_SCHEMA_ATTR_FORMAT_T *) BF_AS_ARRAY_MSG(schemaMsg.tblAttrs);
-    for (int i = 0; i < numAttrs; i++) {
+    for (i = 0; i < numAttrs; i++) {
         struct RM_SCHEMA_ATTR_FORMAT_T *attr = &dataTypes[i];
         rel->schema->dataTypes[i] = BF_AS_U8(attr->attrType);
         rel->schema->typeLength[i] = BF_AS_U8(attr->attrTypeLen);
@@ -306,8 +343,13 @@ RC openTable (RM_TableData *rel, char *name)
 
 RC closeTable (RM_TableData *rel)
 {
-    //write all pages back to disk
     BM_BufferPool *pool = g_instance->bufferPool;
+    RM_TableMetadata *meta = rel->mgmtData;
+
+    // decrease reference to schema table
+    unpinPage(pool, &meta->schemaHandle);
+
+    //write all pages back to disk
     forceFlushPool(pool);
 
     //free schema then relation

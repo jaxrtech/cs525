@@ -4,6 +4,7 @@
 #include "record_mgr.h"
 #include "tables.h"
 #include "test_helper.h"
+#include "storage_mgr.h"
 
 
 #define ASSERT_EQUALS_RECORDS(_l,_r, schema, message)			\
@@ -75,6 +76,9 @@ char *testName;
 int 
 main (void) 
 {
+    // delete any existing page file
+    destroyPageFile("storage.db");
+
 	testName = "";
 	//testInsertManyRecords();
 	testRecords(); //fails
