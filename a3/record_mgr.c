@@ -558,10 +558,10 @@ RC next(RM_ScanHandle *scan, Record *record)
         if (rid->slot < header->numTuples){ //either there is a tuple in the page or another one
            
             //tuple exists. get it and check cond and return
-            Record *tmp = malloc(sizeof(Record));
+            Record *tmp = alloca(sizeof(Record));
             getRecord(rel, *rid, tmp);
 
-            Value *result = (Value *) malloc(sizeof(Value));
+            Value *result = (Value *) alloca(sizeof(Value));
             //check condition here (call evalExpr)
             evalExpr(tmp, rel->schema, cond, &result);
             if(result->v.boolV == true){
@@ -569,9 +569,6 @@ RC next(RM_ScanHandle *scan, Record *record)
                 hit = true;
                 getRecord(rel, *rid, record);
             }
-            //free temp structs
-            free(result);
-            free(tmp);
             rid->slot++;
 
             if (hit) {
@@ -709,10 +706,14 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
     result->dt = dt;
     void *buf = record->data + offset;
     switch (dt) {
-        case DT_STRING:
-            result->v.stringV = (char *) malloc(strlen(buf)+1);
-            strcpy(result->v.stringV, buf);
+        case DT_STRING: {
+            int len = schema->typeLength[attrNum];
+            char *str = (char *) malloc(len + 1);
+            memcpy(str, buf, len);
+            str[len+1] = '\0';
+            result->v.stringV = str;
             break;
+        }
 
         case DT_BOOL:
             result->v.boolV = *(bool *) buf;
@@ -753,26 +754,22 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
     result->dt = dt;
     void *buf = record->data + offset; //remember void ptr is 8 Bytes in length 
     switch (dt) {
-        case DT_STRING: 
-            ;//<--deleting this raises error due to next line
+        case DT_STRING: {
             int len = schema->typeLength[attrNum];      //get str length
-            strncpy((char*)buf, value->v.stringV, len); //copy string from Value
-            buf += offset;                              //increment buffer by offset for next
+            memcpy(buf, value->v.stringV, len); //copy string from Value
             break;
+        }
 
         case DT_BOOL:
             *(bool *) buf = value->v.boolV;  //set value to buf
-            buf += sizeof(bool);             //move buf ptr
             break;
 
         case DT_FLOAT:
             *(float *) buf = value->v.floatV; //set value to buf
-            buf += sizeof(float);             //move buf ptr
             break;
 
         case DT_INT:
             *(int *) buf = value->v.intV;   //set value to buf
-            buf += sizeof(int);             //move buf ptr
             break;
 
         default:
