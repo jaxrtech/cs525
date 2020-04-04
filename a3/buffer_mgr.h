@@ -92,7 +92,7 @@ RC initBufferPool(BM_BufferPool *const bm, const char *const pageFileName,
 		void *stratData);
 RC shutdownBufferPool(BM_BufferPool *const bm);
 RC forceFlushPool(BM_BufferPool *const bm);
-
+RC forceShutdownBufferPool(BM_BufferPool *const bm);
 // Buffer Manager Interface Access Pages
 RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page);
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page);

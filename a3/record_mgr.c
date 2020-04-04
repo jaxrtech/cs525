@@ -1,3 +1,4 @@
+#include <errno.h> 
 #include "record_mgr.h"
 #include "storage_mgr.h"
 //#include "tables.h"
@@ -129,13 +130,16 @@ RC shutdownRecordManager ()
 
     BM_BufferPool *pool = g_instance->bufferPool;
     if (pool != NULL) {
-        shutdownBufferPool(pool);
+        forceShutdownBufferPool(pool);
         free(pool);
         g_instance->bufferPool = NULL;
     }
 
     free(g_instance);
     g_instance = NULL;
+
+    //delete the pagefile
+    
     return RC_OK;
 }
 
