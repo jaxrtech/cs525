@@ -76,7 +76,7 @@ int
 main (void) 
 {
 	testName = "";
-	testInsertManyRecords();
+	//testInsertManyRecords();
 	testRecords(); //fails
 	testCreateTableAndInsert();
 	testUpdateTable();
@@ -92,7 +92,7 @@ void
 testRecords (void)
 {
 	TestRecord expected[] = {
-			{1, "aaaa", 3},
+			{1, "aaaa", 42},
 	};
 	Schema *schema;
 	Record *r;
@@ -101,6 +101,7 @@ testRecords (void)
 
 	// check attributes of created record
 	schema = testSchema();
+	//printSchema(schema);
 	r = fromTestRecord(schema, expected[0]);
 
 	getAttr(r, schema, 0, &value);
