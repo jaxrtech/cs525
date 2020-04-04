@@ -139,10 +139,14 @@ RC shutdownRecordManager ()
     g_instance = NULL;
 
     //delete the pagefile
+<<<<<<< HEAD
     if (destroyPageFile(RM_DEFAULT_FILENAME) != RC_OK) {
         return RC_FILE_DESTROY_ERROR; 
     }
 
+=======
+    
+>>>>>>> 572be1fe16639c1f800ee4f109e1d832dabfbe4e
     return RC_OK;
 }
 
