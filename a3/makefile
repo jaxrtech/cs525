@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -Wall
+CFLAGS = -g #-Wall
 RM = rm -rf
 
 all: test_assign3_1 test_expr #test_binfmt
@@ -7,19 +7,19 @@ all: test_assign3_1 test_expr #test_binfmt
 	
 HEADERS = $(wildcard *.h)
 DEPS_CORE = storage_mgr.c \
-       buffer_mgr_stat.c \
-       dberror.c \
-       buffer_mgr.c \
-       linked_list.c \
-       freespace.c \
-       replacement_strategy.c \
-       hash_map.c \
-       record_mgr.c \
-       rm_serializer.c \
-       expr.c \
-       rm_page.c \
-       tables.c \
-       binfmt.c
+	buffer_mgr_stat.c \
+	dberror.c \
+	buffer_mgr.c \
+	linked_list.c \
+	freespace.c \
+	replacement_strategy.c \
+	hash_map.c \
+	record_mgr.c \
+	rm_serializer.c \
+	expr.c \
+	rm_page.c \
+	tables.c \
+	binfmt.c
 
 DEPS_TEST_ASSIGN3_1 = $(DEPS_CORE) test_assign3_1.c
 DEPS_TEST_EXPR = $(DEPS_CORE) test_expr.c
@@ -39,7 +39,7 @@ test_expr : $(OBJS_TEST_EXPR)
 	$(CC) $(CFLAGS) $^ -o $@
 
 #test_binfmt : $(OBJS_TEST_BINFMT)
-#	$(CC) $(CFLAGS) $^ -o $@
+#      $(CC) $(CFLAGS) $^ -o $@
 
 .PHONY : clean
 clean : 
@@ -48,3 +48,7 @@ clean :
 	$(RM) test_binfmt
 	$(RM) test_expr
 	$(RM) ../cmake-build-debug
+
+.PHONY : pshell-clean
+psh-clean : 
+	del *.exe *.o *.bin *.db
