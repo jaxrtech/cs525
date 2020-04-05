@@ -92,6 +92,6 @@ extern char *serializeRecord(Record *record, Schema *schema);
 extern char *serializeAttr(Record *record, Schema *schema, int attrNum);
 extern char *serializeValue(Value *val);
 
-void *printSchema(Schema *s);
+extern void *printSchema(Schema *s);
 
 #endif

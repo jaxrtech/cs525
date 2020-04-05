@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g #-Wall
+CFLAGS = -w
 RM = rm -rf
 
 all: test_assign3_1 test_expr #test_binfmt
