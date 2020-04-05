@@ -9,6 +9,8 @@ Building the Project:
    - if using *MS PowerShell* use "make psh-clean" to remove the build
    - in linux you can use "make clean"
 
+Assignment has been additionally been ran under `valgrind` to remove all memory leaks.
+
 ! Only have one Record Manager Instance Open !
 
 Table and Record Manager Functions:
