@@ -91,7 +91,7 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     record->data = buf;
 }
 
-void *RM_Page_setTuple(RM_Page *self, Record *r){
+void RM_Page_setTuple(RM_Page *self, Record *r){
 
     uint16_t numTuples = self->header.numTuples;
     int slotNum = r->id.slot; 
@@ -108,26 +108,26 @@ void *RM_Page_setTuple(RM_Page *self, Record *r){
     memcpy(&tup->dataBegin, (void *)r->data, n);
 }
 
-void *RM_Page_deleteTuple(RM_Page *self, RID rid){
-    
+void RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId) {
     //locate tuple
-    uint16_t numTuples = self->header.numTuples;
-    int slotNum = rid.slot; 
-    if (slotNum > numTuples) PANIC("slotNum > max slots in page");
-
-    size_t slot = slotNum * sizeof(RM_PageSlotPtr);
-    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
-
+    size_t slotOffset = slotId * sizeof(RM_PageSlotPtr);
+    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slotOffset);
     RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
-    RM_PageSlotLength n = tup->len;
-
-    memset(&tup->dataBegin, 0, n);           //zero fill tuple
-    memset(&off, NULL, sizeof(RM_PageSlotPtr)); //zero fill slot
+    memset(tup, 0xef, RM_TUP_SIZE(tup->len));           //zero fill tuple
+    memset(off, 0xef, sizeof(RM_PageSlotPtr)); //zero fill slot
 
     //raise flag in header if deleted one of the middle tups
     //or raise flag if deleted last tup
-    if (slotNum < numTuples){ self->header.flags = RM_PAGE_FLAGS_HAS_TRAILING; }
+    if (slotOffset < self->header.freespaceLowerOffset - sizeof(RM_PageSlotId)) {
+        self->header.flags |= RM_PAGE_FLAGS_HAS_TRAILING;
+    }
     else { /* set freespaceTrailingOffset here*/ }
     //NOT_IMPLEMENTED(); //store free space pointer
+
+    if (slotOffset == self->header.freespaceLowerOffset - sizeof(RM_PageSlotId)) {
+        self->header.freespaceLowerOffset -= sizeof(RM_PageSlotId);
+    }
+
+    self->header.numTuples--;
 }
 

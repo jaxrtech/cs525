@@ -150,12 +150,11 @@ RC createTable (char *name, Schema *schema)
     RC rc;
 
     //check if table with same name already exists
-    RM_TableData *temp = (RM_TableData *) malloc(sizeof(RM_TableData));
+    RM_TableData *temp = (RM_TableData *) alloca(sizeof(RM_TableData));
     if ((openTable(temp, name)) == RC_OK){
         closeTable(temp);
         return RC_IM_KEY_ALREADY_EXISTS;
     }
-    free(temp);
 
     uint64_t tableNameLength = strlen(name);
     if (tableNameLength <= 0 || tableNameLength > RM_MAX_ATTR_NAME_LEN) {
@@ -168,7 +167,6 @@ RC createTable (char *name, Schema *schema)
     BM_BufferPool *pool = g_instance->bufferPool;
     BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
-    meta->fileHandle->totalNumPages++;
 
     BM_PageHandle dataPageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
@@ -181,7 +179,7 @@ RC createTable (char *name, Schema *schema)
     //
     int numColumns = schema->numAttr;
     size_t attrsSizeBytes = numColumns * sizeof(RM_SCHEMA_ATTR_FORMAT);
-    struct RM_SCHEMA_ATTR_FORMAT_T *attrs = alloca(attrsSizeBytes);
+    struct RM_SCHEMA_ATTR_FORMAT_T *attrs = malloc(attrsSizeBytes);
     for (int i = 0; i < numColumns; i++) {
         if (strlen(schema->attrNames[i]) > RM_MAX_ATTR_NAME_LEN) {
             return RC_RM_NAME_TOO_LONG;
@@ -201,7 +199,7 @@ RC createTable (char *name, Schema *schema)
 
     int numKeys = schema->keySize;
     size_t keysDiskSize = numKeys * sizeof(uint8_t);
-    uint8_t *keysDisk = alloca(keysDiskSize);
+    uint8_t *keysDisk = malloc(keysDiskSize);
     for (int i = 0; i < numKeys; i++) {
         keysDisk[i] = (uint8_t) schema->keyAttrs[i];
     }
@@ -245,6 +243,7 @@ RC findTable(
         struct RM_PageTuple **tup_out,
         struct RM_SCHEMA_FORMAT_T *msg_out)
 {
+    size_t nameLength = strlen(name);
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle pageHandle = {};
     //store the schema page in pageHandle
@@ -261,22 +260,32 @@ RC findTable(
     uint16_t num = hdr->numTuples;
     bool hit = false;
     struct RM_SCHEMA_FORMAT_T schemaMsg = {};
-    int i=0;
-    while (i<num) {
+    for (int i = 0; i < num; i++) {
         size_t slot = i * sizeof(RM_PageSlotPtr);
         off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
+        if (*off >= RM_PAGE_DATA_SIZE) {
+            PANIC("tuple offset cannot be greater than page data size");
+        }
+
         //printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
         fflush(stdout);
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
         schemaMsg = RM_SCHEMA_FORMAT;
-        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
-        if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
+        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(RM_SCHEMA_FORMAT)));
+        int tblNameLength = BF_STRLEN(schemaMsg.tblName) - 1; // BF will store the extra '\0'
+        if (tblNameLength <= 0) {
+            PANIC("bad table name length = %d", tblNameLength);
+        }
+
+        if (nameLength == tblNameLength
+            && memcmp(BF_AS_STR(schemaMsg.tblName), name, tblNameLength) == 0)
+        {
             hit = true;
             break;
         }
-        i++;
     }
+
     if (!hit) {
         return RC_RM_UNKNOWN_TABLE;
     }
@@ -290,7 +299,7 @@ RC findTable(
     }
     
     if (msg_out != NULL) {
-        *msg_out = schemaMsg;
+        memcpy(msg_out, &schemaMsg, sizeof(RM_SCHEMA_FORMAT));
     }
     
     return RC_OK;
@@ -369,63 +378,36 @@ RC closeTable (RM_TableData *rel)
 RC deleteTable (char *name)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
-    forceFlushPool(pool); //write all pages to disk just in case
+    BM_PageHandle schemaPageHandle = {};
+    struct RM_SCHEMA_FORMAT_T schema = {};
+    RM_PageTuple *tup = NULL;
 
-    //open temporary relation in memory so we can scan its pages
-    RM_TableData *rel = (RM_TableData *) malloc(sizeof(RM_TableData));
-    openTable(rel, name);
-    
-    int pageNum = rel->schema->dataPageNum;
-    BM_PageHandle handle;
+    TRY_OR_RETURN(findTable(name, &schemaPageHandle, &tup, &schema));
+    RM_Page *schemaPage = (RM_Page *) schemaPageHandle.buffer;
 
-    //mark pages as empty in relation
-    do{
-        if (pinPage(pool, &handle, pageNum) != RC_OK) { return -1; }
-            RM_Page *page = (RM_Page *) handle.buffer;
-            pageNum = page->header.nextPageNum;
+    int lastPageNum = BF_AS_U16(schema.tblDataPageNum);
+    int tmpPageNum;
+    do {
+        BM_PageHandle dataPageHandle = {};
+        TRY_OR_RETURN(pinPage(pool, &dataPageHandle, lastPageNum));
 
-            //NOT_IMPLEMENTED(); //mark page as empty here
+        RM_Page *dataPage = (RM_Page *) dataPageHandle.buffer;
+        tmpPageNum = dataPage->header.nextPageNum;
+//        printf("deleteTable('%s'): free page #%d\n", name, lastPageNum);
+        RM_Page_init(dataPage, lastPageNum, RM_PAGE_KIND_FREE);
 
-        if (unpinPage(pool, &handle) != RC_OK) { return -1; }
+        TRY_OR_RETURN(forcePage(pool, &dataPageHandle));
+        TRY_OR_RETURN(unpinPage(pool, &dataPageHandle));
 
-    } while ( pageNum != -1 ); //will quit when there isn't a new page delete
+        lastPageNum = tmpPageNum;
+    } while (lastPageNum > 0);
 
-    closeTable(rel); //frees rel 
+    RM_Page_deleteTuple(schemaPage, tup->slotId);
 
-    //delete tuple in schema page
-    TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_SCHEMA));
-    RM_Page *pg = (RM_Page *) handle.buffer;
-    RM_PageHeader *hdr = &pg->header;
+    TRY_OR_RETURN(forcePage(pool, &schemaPageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &schemaPageHandle));
 
-    //get the record id for the schema tuple
-    RID *rid = (RID *) malloc(sizeof(RID));
-    rid->page = RM_PAGE_SCHEMA;
-
-    //get the slot number for the relation tuple
-    RM_PageTuple *tup;
-    RM_PageSlotPtr *off;
-    uint16_t num = hdr->numTuples;
-    struct RM_SCHEMA_FORMAT_T schemaMsg;
-    int i=0;
-    while (i<num) {
-        size_t slot = i * sizeof(RM_PageSlotPtr);
-        off = (RM_PageSlotPtr *) (&pg->dataBegin + slot);
-        fflush(stdout);
-        tup = (RM_PageTuple *) (&pg->dataBegin + *off);
-
-        schemaMsg = RM_SCHEMA_FORMAT;
-        BF_read((BF_MessageElement *) &schemaMsg, &tup->dataBegin, BF_NUM_ELEMENTS(sizeof(schemaMsg)));
-        if (strncmp(BF_AS_STR(schemaMsg.tblName), name, BF_STRLEN(schemaMsg.tblName)) == 0) {
-            rid->slot = i; //mark RID slot
-            break;
-        }
-    }
-
-    // Null the schema tuple data
-    RM_Page_deleteTuple(pg, *rid);
-
-    TRY_OR_RETURN(forcePage(pool, &handle)); ////Note: FOR SOME REASON it also re-inits the DB
-    TRY_OR_RETURN(unpinPage(pool, &handle));
+    return RC_OK;
 }
 
 int getNumTuples (RM_TableData *rel)
@@ -458,6 +440,10 @@ RC insertRecord (RM_TableData *rel, Record *record)
 {
     //get page that holds the records for the data. Assume overflow handled in RM_ReserveTuple(...);
     int pageNum = rel->schema->dataPageNum;
+    if (pageNum == RM_PAGE_SCHEMA || pageNum < 0) {
+        PANIC("bad data page num %d for table '%s'", pageNum, rel->name);
+    }
+
     BM_BufferPool *pool = g_instance->bufferPool;
     BP_Metadata *meta = pool->mgmtData;
 
@@ -480,7 +466,6 @@ RC insertRecord (RM_TableData *rel, Record *record)
                 continue; //try with next page
             } else {
                 int newpageNum = meta->fileHandle->totalNumPages;
-                meta->fileHandle->totalNumPages++;
 
                 //create new page
                 BM_PageHandle newdata = {};
@@ -517,8 +502,6 @@ RC insertRecord (RM_TableData *rel, Record *record)
  */
 RC deleteRecord (RM_TableData *rel, RID id)
 {
-
-
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle handle;
 
@@ -526,7 +509,7 @@ RC deleteRecord (RM_TableData *rel, RID id)
     TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
     RM_Page *page = (RM_Page *) handle.buffer;
 
-    RM_Page_deleteTuple(page, id);
+    RM_Page_deleteTuple(page, id.slot);
 
     TRY_OR_RETURN(markDirty(pool, &handle));
     TRY_OR_RETURN(unpinPage(pool, &handle));
@@ -652,11 +635,9 @@ RC next(RM_ScanHandle *scan, Record *record)
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
 RC closeScan (RM_ScanHandle *scan)
 {
-    //unpack struct and free it (freeing scanhandle is done by caller)
-    RID *rid = scan->lastRID;
-    free(rid);
-    //freeExpr done by caller
-    //unpin pages done in next()
+    // freeExpr done by caller
+    // scan->lastRID is free'd by next()
+    // unpin pages done in next()
     return RC_OK;
 } 
 
@@ -752,7 +733,7 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
             int len = schema->typeLength[attrNum];
             char *str = (char *) malloc(len + 1);
             memcpy(str, buf, len);
-            str[len+1] = '\0';
+            str[len] = '\0';
             result->v.stringV = str;
             break;
         }

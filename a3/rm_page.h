@@ -26,6 +26,7 @@ typedef uint16_t RM_PageFlags;
 typedef uint8_t RM_PageKind;
 #define RM_PAGE_KIND_SCHEMA 1
 #define RM_PAGE_KIND_DATA   2
+#define RM_PAGE_KIND_FREE   0xff
 
 typedef struct PACKED_STRUCT RM_PageHeader {
     RM_PageNumber pageNum;
@@ -100,5 +101,5 @@ RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
 RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len);
 
 void *RM_Page_getTuple(RM_Page *page, Record *record, RID rid);
-void *RM_Page_setTuple(RM_Page *self, Record *r);
-void *RM_Page_deleteTuple(RM_Page *self, RID rid);
+void RM_Page_setTuple(RM_Page *self, Record *r);
+void RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId);

@@ -81,13 +81,14 @@ main (void)
 
 	testName = "";
 	testInsertManyRecords();
-	testRecords(); //fails
+	testRecords();
 	testCreateTableAndInsert();
 	testUpdateTable();
 	testScans();
 	testScansTwo();
 	testMultipleScans();
 
+	printf("PASSED ALL TESTS\n");
 	return 0;
 }
 
