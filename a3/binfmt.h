@@ -165,3 +165,9 @@ BF_read_single(BF_MessageElement *self, void *buffer);
 
 uint16_t
 BF_read(BF_MessageElement *arr, void *buffer, uint8_t num_elements);
+
+void
+BF_freeRead(BF_MessageElement *arr, uint8_t num_elements);
+
+void
+BF_freeRead_single(BF_MessageElement *self);

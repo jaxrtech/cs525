@@ -12,18 +12,18 @@
 			Record *_lR = _l;                                                   \
 			Record *_rR = _r;                                                   \
 			ASSERT_TRUE(memcmp(_lR->data,_rR->data,getRecordSize(schema)) == 0, message); \
-			int i;								\
-			for(i = 0; i < schema->numAttr; i++)				\
+			int _i;								\
+			for(_i = 0; _i < schema->numAttr; _i++)				\
 			{									\
 				Value *lVal, *rVal;                                             \
 				char *lSer, *rSer; \
-				getAttr(_lR, schema, i, &lVal);                                  \
-				getAttr(_rR, schema, i, &rVal);                                  \
+				getAttr(_lR, schema, _i, &lVal);                                  \
+				getAttr(_rR, schema, _i, &rVal);                                  \
 				lSer = serializeValue(lVal); \
 				rSer = serializeValue(rVal); \
 				ASSERT_EQUALS_STRING(lSer, rSer, "attr same");	\
-				free(lVal); \
-				free(rVal); \
+				freeVal(lVal); \
+				freeVal(rVal); \
 				free(lSer); \
 				free(rSer); \
 			}									\
@@ -101,7 +101,7 @@ testRecords (void)
 	};
 	Schema *schema;
 	Record *r;
-	Value *value;
+	Value *value, *t;
 	testName = "test creating records and manipulating attributes";
 
 	// check attributes of created record
@@ -109,24 +109,29 @@ testRecords (void)
 	r = fromTestRecord(schema, expected[0]);
 
 	getAttr(r, schema, 0, &value);
-	OP_TRUE(stringToValue("i1"), value, valueEquals, "first attr");
+	OP_TRUE((t = stringToValue("i1")), value, valueEquals, "first attr");
 	freeVal(value);
+	freeVal(t);
 
 	getAttr(r, schema, 1, &value);
-	OP_TRUE(stringToValue("saaaa"), value, valueEquals, "second attr");
+	OP_TRUE((t = stringToValue("saaaa")), value, valueEquals, "second attr");
 	freeVal(value);
+    freeVal(t);
 
-	getAttr(r, schema, 2, &value);
-	OP_TRUE(stringToValue("i3"), value, valueEquals, "third attr");
+    getAttr(r, schema, 2, &value);
+	OP_TRUE((t = stringToValue("i3")), value, valueEquals, "third attr");
 	freeVal(value);
+	freeVal(t);
 
 	//modify attrs
-	setAttr(r, schema, 2, stringToValue("i4"));
+	setAttr(r, schema, 2, (t = stringToValue("i4")));
 	getAttr(r, schema, 2, &value);
-	OP_TRUE(stringToValue("i4"), value, valueEquals, "third attr after setting");
+	OP_TRUE(t, value, valueEquals, "third attr after setting");
 	freeVal(value);
+	freeVal(t);
 
 	freeRecord(r);
+	freeSchema(schema);
 	TEST_DONE();
 }
 
@@ -164,6 +169,7 @@ testCreateTableAndInsert (void)
 		r = fromTestRecord(schema, inserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+		freeRecord(r);
 	}
 
 	TEST_CHECK(closeTable(table));
@@ -174,8 +180,13 @@ testCreateTableAndInsert (void)
 	{
 		int pos = rand() % numInserts;
 		RID rid = rids[pos];
-		TEST_CHECK(getRecord(table, rid, r));
-		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, inserts[pos]), r, schema, "compare records");
+
+		Record tmp = {};
+		TEST_CHECK(getRecord(table, rid, &tmp));
+
+        Record *testRecord = fromTestRecord(schema, inserts[pos]);
+        ASSERT_EQUALS_RECORDS(testRecord, &tmp, schema, "compare records");
+        free(testRecord);
 	}
 
 	TEST_CHECK(closeTable(table));
@@ -184,6 +195,7 @@ testCreateTableAndInsert (void)
 
 	free(rids);
 	free(table);
+	freeSchema(schema);
 	TEST_DONE();
 }
 
@@ -225,6 +237,7 @@ testMultipleScans(void)
 		r = fromTestRecord(schema, inserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+		freeRecord(r);
 	}
 
 	// Mix 2 scans with c=3 as condition
@@ -250,16 +263,23 @@ testMultipleScans(void)
 
 	ASSERT_TRUE(scanOne == scanTwo, "scans returned same number of tuples");
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);		//fail here
+		TEST_CHECK(rc);
 	TEST_CHECK(closeScan(sc1));
 	TEST_CHECK(closeScan(sc2));
+	FREE_EXPR(left);
+	FREE_EXPR(right);
+	FREE_EXPR(se1);
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_r"));
 	TEST_CHECK(shutdownRecordManager());
 
+	free(sc1);
+	free(sc2);
 	free(rids);
 	free(table);
+	freeRecord(r);
+	freeSchema(schema);
 	TEST_DONE();
 }
 
@@ -316,6 +336,7 @@ testUpdateTable (void)
 		r = fromTestRecord(schema, inserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+		freeRecord(r);
 	}
 
 	// delete rows from table
@@ -330,6 +351,7 @@ testUpdateTable (void)
 		r = fromTestRecord(schema, updates[i]);
 		r->id = rids[i];
 		TEST_CHECK(updateRecord(table,r));
+		freeRecord(r);
 	}
 
 	TEST_CHECK(closeTable(table));
@@ -339,15 +361,21 @@ testUpdateTable (void)
 	for(i = 0; i < numFinal; i++)
 	{
 		RID rid = rids[i];
-		TEST_CHECK(getRecord(table, rid, r));
-		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, finalR[i]), r, schema, "compare records");
+		Record tmp = {};
+		TEST_CHECK(getRecord(table, rid, &tmp));
+
+        Record *test = fromTestRecord(schema, finalR[i]);
+        ASSERT_EQUALS_RECORDS(test, &tmp, schema, "compare records");
+        freeRecord(test);
 	}
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_r"));
 	TEST_CHECK(shutdownRecordManager());
 
+	free(rids);
 	free(table);
+	freeSchema(schema);
 	TEST_DONE();
 }
 
@@ -392,6 +420,7 @@ testInsertManyRecords(void)
 		r = fromTestRecord(schema, realInserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+		freeRecord(r);
 	}
 	int numtuples = getNumTuples(table);
 	printf("test_table_t (numtuples) = %d\n", numtuples);
@@ -403,22 +432,31 @@ testInsertManyRecords(void)
 	for(i = 0; i < numInserts; i++)
 	{
 		RID rid = rids[i];
-		TEST_CHECK(getRecord(table, rid, r));
-		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, realInserts[i]), r, schema, "compare records");
+		Record tmp;
+		TEST_CHECK(getRecord(table, rid, &tmp));
+
+        r = fromTestRecord(schema, realInserts[i]);
+        ASSERT_EQUALS_RECORDS(r, &tmp, schema, "compare records");
+        freeRecord(r);
 	}
 	printf("%d records in (reopened) \"test_table_t\" are OK", numInserts);
 	r = fromTestRecord(schema, updates[0]);
 	r->id = rids[randomRec];
 	TEST_CHECK(updateRecord(table,r));
 	TEST_CHECK(getRecord(table, rids[randomRec], r));
-	ASSERT_EQUALS_RECORDS(fromTestRecord(schema, updates[0]), r, schema, "compare records");
+
+	Record *t = fromTestRecord(schema, updates[0]);
+    ASSERT_EQUALS_RECORDS(t, r, schema, "compare records");
+    freeRecord(t);
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_t"));
 	TEST_CHECK(shutdownRecordManager());
 
 	freeRecord(r);
+	freeSchema(schema);
 	free(table);
+	free(rids);
 	TEST_DONE();
 }
 
@@ -467,6 +505,7 @@ void testScans (void)
 		r = fromTestRecord(schema, inserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+        freeRecord(r);
 	}
 
 	TEST_CHECK(closeTable(table));
@@ -477,35 +516,41 @@ void testScans (void)
 	MAKE_ATTRREF(right, 2);
 	MAKE_BINOP_EXPR(sel, left, right, OP_COMP_EQUAL);
 
-	TEST_CHECK(startScan(table, sc, sel)); //fail here
-	int diff; 
+	TEST_CHECK(startScan(table, sc, sel));
+    r = alloca(sizeof(Record));
 	while((rc = next(sc, r)) == RC_OK)
 	{
 		for(i = 0; i < scanSizeOne; i++)
 		{
 			int rSize = getRecordSize(schema);
 			Record *tv = fromTestRecord(schema, scanOneResult[i]);
-			if ((diff=memcmp( (tv->data), (r->data), (rSize) )) == 0){
+			if ((memcmp((tv->data), (r->data), (rSize))) == 0){
 				foundScan[i] = true;
 			}
+			freeRecord(tv);
 		}
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES){
 		printf("scan next error: %d\n", rc);
 		TEST_CHECK(rc); 
 	}
-	TEST_CHECK(closeScan(sc)); //implement me (or comment out temporarily)
+	TEST_CHECK(closeScan(sc));
 	for(i = 0; i < scanSizeOne; i++)
 		ASSERT_TRUE(foundScan[i], "check for scan result");
 
-	// clean up
+    // clean up
+	FREE_EXPR(left);
+    FREE_EXPR(right);
+    FREE_EXPR(sel);
+
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(deleteTable("test_table_r"));
 	TEST_CHECK(shutdownRecordManager());
 
+	free(rids);
 	free(table);
 	free(sc);
-	freeExpr(sel);
+	freeSchema(schema);
 	TEST_DONE();
 }
 
@@ -559,39 +604,52 @@ void testScansTwo (void)
 		r = fromTestRecord(schema, inserts[i]);
 		TEST_CHECK(insertRecord(table,r));
 		rids[i] = r->id;
+		freeRecord(r);
 	}
 
 	TEST_CHECK(closeTable(table));
 	TEST_CHECK(openTable(table, "test_table_r"));
 
+	// create record of the scan tests
+    createRecord(&r, schema);
+
 	// Select 1 record with INT in condition a=2.
 	MAKE_CONS(left, stringToValue("i2"));
 	MAKE_ATTRREF(right, 0);
 	MAKE_BINOP_EXPR(sel, left, right, OP_COMP_EQUAL);
-	createRecord(&r, schema);
 	TEST_CHECK(startScan(table, sc, sel));
 	while((rc = next(sc, r)) == RC_OK)
 	{
-		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, inserts[1]), r, schema, "compare records");
+        Record *test = fromTestRecord(schema, inserts[1]);
+        ASSERT_EQUALS_RECORDS(test, r, schema, "compare records");
+        freeRecord(test);
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
-		TEST_CHECK(rc);					// fail here
+		TEST_CHECK(rc);
 	TEST_CHECK(closeScan(sc));
+	FREE_EXPR(left);
+    FREE_EXPR(right);
+    FREE_EXPR(sel);
 
 	// Select 1 record with STRING in condition b='ffff'.
 	MAKE_CONS(left, stringToValue("sffff"));
 	MAKE_ATTRREF(right, 1);
 	MAKE_BINOP_EXPR(sel, left, right, OP_COMP_EQUAL);
-	createRecord(&r, schema);
 	TEST_CHECK(startScan(table, sc, sel));
 	while((rc = next(sc, r)) == RC_OK)
 	{
-		ASSERT_EQUALS_RECORDS(fromTestRecord(schema, inserts[5]), r, schema, "compare records");
-		serializeRecord(r, schema);
+        Record *tmp = fromTestRecord(schema, inserts[5]);
+        ASSERT_EQUALS_RECORDS(tmp, r, schema, "compare records");
+        free(tmp);
+
+        free(serializeRecord(r, schema));
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
 		TEST_CHECK(rc);
 	TEST_CHECK(closeScan(sc));
+    FREE_EXPR(left);
+    FREE_EXPR(right);
+    FREE_EXPR(sel);
 
 	// Select all records, with condition being false
 	MAKE_CONS(left, stringToValue("i4"));
@@ -601,16 +659,22 @@ void testScansTwo (void)
 	TEST_CHECK(startScan(table, sc, se));
 	while((rc = next(sc, r)) == RC_OK)
 	{
-		serializeRecord(r, schema);
+		free(serializeRecord(r, schema));
 		for(i = 0; i < numInserts; i++)
 		{
-			if (memcmp(fromTestRecord(schema, inserts[i])->data,r->data,getRecordSize(schema)) == 0)
+            Record *tmp = fromTestRecord(schema, inserts[i]);
+            if (memcmp(tmp->data, r->data, getRecordSize(schema)) == 0)
 				foundScan[i] = TRUE;
+            free(tmp);
 		}
 	}
 	if (rc != RC_RM_NO_MORE_TUPLES)
 		TEST_CHECK(rc);
 	TEST_CHECK(closeScan(sc));
+    FREE_EXPR(first);
+    FREE_EXPR(left);
+    FREE_EXPR(right);
+    FREE_EXPR(se);
 
 	ASSERT_TRUE(!foundScan[0], "not greater than four");
 	ASSERT_TRUE(foundScan[4], "greater than four");
@@ -621,10 +685,11 @@ void testScansTwo (void)
 	TEST_CHECK(deleteTable("test_table_r"));
 	TEST_CHECK(shutdownRecordManager());
 
-	freeRecord(r);
-	free(table);
+    freeRecord(r);
+    freeSchema(schema);
+    free(rids);
+    free(table);
 	free(sc);
-	freeExpr(sel);
 	TEST_DONE();
 }
 

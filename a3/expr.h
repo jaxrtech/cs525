@@ -78,6 +78,17 @@ extern void freeVal(Value *val);
       _op->args[1] = _right;						\
     } while (0)
 
+#define FREE_EXPR(_result) \
+    do { \
+        if (_result->type == EXPR_OP) { \
+            free(_result->expr.op->args); \
+            free(_result->expr.op); \
+        } else if (_result->type == EXPR_CONST) { \
+            freeVal(_result->expr.cons); \
+        } \
+        free(_result); \
+    } while (0)
+
 #define MAKE_UNOP_EXPR(_result,_input,_optype)				\
   do {									\
     Operator *_op = (Operator *) malloc(sizeof(Operator));		\

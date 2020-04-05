@@ -159,3 +159,23 @@ BF_read(BF_MessageElement *arr, void *buffer, uint8_t num_elements)
 
     return ((char *) buffer) - ((char *) buffer_orig);
 }
+
+void BF_freeRead_single(BF_MessageElement *self)
+{
+    switch (self->type) {
+        case BF_ARRAY_MSG:
+            BF_freeRead(self->array_msg.data, self->array_msg.data_count);
+            free(self->array_msg.data);
+
+        default:
+            // nothing to do
+            return;
+    }
+}
+
+void BF_freeRead(BF_MessageElement *arr, uint8_t num_elements)
+{
+    for (int i = 0; i < num_elements; i++) {
+       BF_freeRead_single(&arr[i]);
+    }
+}

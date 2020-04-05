@@ -71,7 +71,7 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
 }
 
 //assume we always have the right page from calling method 
-void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
+void RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     uint16_t numTuples = self->header.numTuples;
     int slotNum = rid.slot; 
     if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
@@ -82,13 +82,10 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
 
     RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
 
-    //read the data and assign it into the record ptr
-    RM_PageSlotLength n = tup->len;
-    void *buf = malloc(n);
-    memcpy(buf, &tup->dataBegin, n);
-
+    // read the data and assign it into the record ptr
+    // assumes that the page will still be in memory when tuple is read from
     record->id = rid;
-    record->data = buf;
+    record->data = &tup->dataBegin;
 }
 
 void RM_Page_setTuple(RM_Page *self, Record *r){
