@@ -9,6 +9,8 @@
 typedef struct RM_ScanHandle
 {
 	RM_TableData *rel;
+	RID *lastRID;
+	Record *tempRecord;
 	void *mgmtData;
 } RM_ScanHandle;
 

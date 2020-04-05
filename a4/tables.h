@@ -2,6 +2,7 @@
 #define TABLES_H
 
 #include "dt.h"
+#include "dberror.h"
 
 // Data Types, Records, and Schemas
 typedef enum DataType {
@@ -35,12 +36,13 @@ typedef struct Record
 // information of a table schema: its attributes, datatypes, 
 typedef struct Schema
 {
-	int numAttr;
-	char **attrNames;
-	DataType *dataTypes;
-	int *typeLength;
-	int *keyAttrs;
-	int keySize;
+	int numAttr; 			//relative const
+	char **attrNames;		//array of strings
+	DataType *dataTypes;	//array of dataTypes
+	int *typeLength;		//array of lengths of dataTypes
+	int *keyAttrs;			//array of keyAttrs
+	int keySize;			//relative const
+	int dataPageNum;		//pagenum that stores first tuple of data
 } Schema;
 
 // TableData: Management Structure for a Record Manager to handle one relation
@@ -79,6 +81,8 @@ typedef struct RM_TableData
 		} while(0)
 
 
+extern RC getAttrOffset (Schema *schema, int attrNum, int *result);
+
 // debug and read methods
 extern Value *stringToValue (char *value);
 extern char *serializeTableInfo(RM_TableData *rel);
@@ -87,5 +91,7 @@ extern char *serializeSchema(Schema *schema);
 extern char *serializeRecord(Record *record, Schema *schema);
 extern char *serializeAttr(Record *record, Schema *schema, int attrNum);
 extern char *serializeValue(Value *val);
+
+/*extern void *printSchema(Schema *s); */
 
 #endif

@@ -11,4 +11,6 @@
 #define TRUE true
 #define FALSE false
 
+#define PACKED_STRUCT __attribute__((__packed__))
+
 #endif // DT_H
