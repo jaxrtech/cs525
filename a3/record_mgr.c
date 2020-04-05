@@ -179,7 +179,7 @@ RC createTable (char *name, Schema *schema)
     //
     int numColumns = schema->numAttr;
     size_t attrsSizeBytes = numColumns * sizeof(RM_SCHEMA_ATTR_FORMAT);
-    struct RM_SCHEMA_ATTR_FORMAT_T *attrs = malloc(attrsSizeBytes);
+    struct RM_SCHEMA_ATTR_FORMAT_T *attrs = alloca(attrsSizeBytes);
     for (int i = 0; i < numColumns; i++) {
         if (strlen(schema->attrNames[i]) > RM_MAX_ATTR_NAME_LEN) {
             return RC_RM_NAME_TOO_LONG;
@@ -199,7 +199,7 @@ RC createTable (char *name, Schema *schema)
 
     int numKeys = schema->keySize;
     size_t keysDiskSize = numKeys * sizeof(uint8_t);
-    uint8_t *keysDisk = malloc(keysDiskSize);
+    uint8_t *keysDisk = alloca(keysDiskSize);
     for (int i = 0; i < numKeys; i++) {
         keysDisk[i] = (uint8_t) schema->keyAttrs[i];
     }
@@ -305,6 +305,10 @@ RC findTable(
     return RC_OK;
 }
 
+void findTableFree(struct RM_SCHEMA_FORMAT_T *schema) {
+    BF_freeRead((BF_MessageElement *) schema, BF_NUM_ELEMENTS(sizeof(*schema)));
+}
+
 typedef struct RM_TableMetadata {
     BM_PageHandle schemaHandle;
 } RM_TableMetadata;
@@ -318,10 +322,11 @@ RC openTable (RM_TableData *rel, char *name)
     struct RM_SCHEMA_FORMAT_T schemaMsg = {};
     RM_TableMetadata *meta = malloc(sizeof(RM_TableMetadata));
     if ((rc = findTable(name, &meta->schemaHandle, NULL, &schemaMsg))!=RC_OK) {
+        findTableFree(&schemaMsg);
         free(meta);
         return rc;
     }
-    
+
     rel->mgmtData = meta;
     
     int numKeys = BF_ARRAY_U8_LEN(schemaMsg.tblKeys);
@@ -346,7 +351,8 @@ RC openTable (RM_TableData *rel, char *name)
         rel->schema->typeLength[i] = BF_AS_U8(attr->attrTypeLen);
         rel->schema->attrNames[i] = BF_AS_STR(attr->attrName);
     }
-    
+
+    findTableFree(&schemaMsg);
     return RC_OK;
 }
 
@@ -358,10 +364,13 @@ RC closeTable (RM_TableData *rel)
     // decrease reference to schema table
     unpinPage(pool, &meta->schemaHandle);
 
-    //write all pages back to disk
+    // write all pages back to disk
     forceFlushPool(pool);
 
-    //free schema then relation
+    // free metadata
+    free(rel->mgmtData);
+
+    // free schema then relation
     free(rel->schema->attrNames);
     free(rel->schema->dataTypes);
     free(rel->schema->typeLength);
@@ -379,13 +388,18 @@ RC deleteTable (char *name)
 {
     BM_BufferPool *pool = g_instance->bufferPool;
     BM_PageHandle schemaPageHandle = {};
-    struct RM_SCHEMA_FORMAT_T schema = {};
     RM_PageTuple *tup = NULL;
 
-    TRY_OR_RETURN(findTable(name, &schemaPageHandle, &tup, &schema));
+    int lastPageNum;
+    {
+        struct RM_SCHEMA_FORMAT_T schema = {};
+        TRY_OR_RETURN(findTable(name, &schemaPageHandle, &tup, &schema));
+        lastPageNum = BF_AS_U16(schema.tblDataPageNum);
+        findTableFree(&schema);
+    }
+
     RM_Page *schemaPage = (RM_Page *) schemaPageHandle.buffer;
 
-    int lastPageNum = BF_AS_U16(schema.tblDataPageNum);
     int tmpPageNum;
     do {
         BM_PageHandle dataPageHandle = {};
@@ -586,13 +600,18 @@ RC next(RM_ScanHandle *scan, Record *record)
             Record *tmp = alloca(sizeof(Record));
             getRecord(rel, *rid, tmp);
 
-            Value *result = (Value *) alloca(sizeof(Value));
-            //check condition here (call evalExpr)
-            evalExpr(tmp, rel->schema, cond, &result);
-            if(result->v.boolV == true){
-                //MARKER(result->v.boolV);
-                hit = true;
-                getRecord(rel, *rid, record);
+            {
+                Value *val;
+                //check condition here (call evalExpr)
+                evalExpr(tmp, rel->schema, cond, &val);
+                if (val->v.boolV == true) {
+                    hit = true;
+                    if (record != NULL) {
+                        record->id = tmp->id;
+                        record->data = tmp->data;
+                    }
+                }
+                freeVal(val);
             }
             rid->slot++;
 
@@ -601,23 +620,10 @@ RC next(RM_ScanHandle *scan, Record *record)
                 //printf("Scan: found Tuple\n");
                 return RC_OK;
             }
+
             continue;
-            //set up to check next tuple or quit
-            if (rid->slot == header->numTuples){
-                if(header->nextPageNum != -1){ 
-                    free(rid);
-                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
-                    return RC_RM_NO_MORE_TUPLES; 
-                }
-                else {  
-                    rid->page = header->nextPageNum;
-                    if (unpinPage(pool, &handle) != RC_OK) { return -1; }
-                    rid->slot = 0;
-                    continue;
-                }
-            }
         }
-        else if(header->nextPageNum != -1){ //case where tup in a diff page
+        else if (header->nextPageNum != -1){ //case where tup in a diff page
             rid->page = header->nextPageNum;
             if (unpinPage(pool, &handle) != RC_OK) { return -1; }
             continue;   //try all pages
@@ -629,7 +635,6 @@ RC next(RM_ScanHandle *scan, Record *record)
         }
         PANIC("control should not reach here");;
     } while (1); //will quit when there isn't a new page to scan
-
 }
 
 /* Closing a scan indicates to the record manager that all associated resources can be cleaned up. */
@@ -685,6 +690,13 @@ Schema *createSchema (
 
 RC freeSchema (Schema *schema)
 {
+    for (int i = 0; i < schema->numAttr; i++) {
+        free(schema->attrNames[i]);
+    }
+    free(schema->attrNames);
+    free(schema->dataTypes);
+    free(schema->keyAttrs);
+    free(schema->typeLength);
     free(schema);
     return RC_OK;
 }
@@ -753,7 +765,9 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value)
         default: PANIC("unhandled datatype");
     }
 
-    *value = result;
+    if (value != NULL) {
+        *value = result;
+    }
     return RC_OK;
 }
 
@@ -767,15 +781,8 @@ RC setAttr (Record *record, Schema *schema, int attrNum, Value *value)
     int offset;
     TRY_OR_RETURN(getAttrOffset(schema, attrNum, &offset));
 
-    Value *result = malloc(sizeof(Value));
-    if (result == NULL) {
-        PANIC("out of memory");
-        exit(1);
-    }
-
     DataType dt = schema->dataTypes[attrNum];
-    result->dt = dt;
-    void *buf = record->data + offset; //remember void ptr is 8 Bytes in length 
+    void *buf = (char *) record->data + offset;
     switch (dt) {
         case DT_STRING: {
             int len = schema->typeLength[attrNum];      //get str length

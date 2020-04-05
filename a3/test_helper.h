@@ -23,7 +23,7 @@ extern char *testName;
 				free(message);							\
 				exit(1);							\
 			}									\
-		} while(0);
+		} while(0)
 
 // check whether two strings are equal
 #define ASSERT_EQUALS_STRING(expected,real,message)			\
