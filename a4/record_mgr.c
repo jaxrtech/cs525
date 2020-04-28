@@ -59,7 +59,6 @@ static RC RM_writeSchemaPage(BM_BufferPool *pool)
 
 RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 {
-    printf("ASSIGNMENT 3 (Storage Manager)\n\tCS 525 - SPRING 2020\n\tCHRISTOPHER MORCOM & JOSH BOWDEN\n\n");
     
     RC rc;
     if (g_instance != NULL) {
