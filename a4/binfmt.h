@@ -8,6 +8,7 @@
 typedef enum BF_DataType {
     BF_UINT8,
     BF_UINT16,
+    BF_INT32,
     BF_LSTRING,
     BF_ARRAY_UINT8,
     BF_ARRAY_MSG,
@@ -22,6 +23,7 @@ typedef struct BF_MessageElement {
     union {
         uint8_t u8;
         uint16_t u16;
+        int32_t i32;
         struct {
             uint8_t cached_strlen;
             char *str;
@@ -43,6 +45,7 @@ typedef struct BF_MessageElement {
 
 #define BF_DEREF_U8  .u8
 #define BF_DEREF_U16 .u16
+#define BF_DEREF_I32 .i32
 #define BF_DEREF_STR .lstring.str
 
 #define BF_SET_U8(VAR) \
@@ -61,6 +64,14 @@ typedef struct BF_MessageElement {
     } while (0); \
     (VAR) BF_DEREF_U16
 
+#define BF_SET_I32(VAR) \
+    do { \
+        if ((VAR).type != BF_INT32) { \
+            PANIC("wrong message element type. expected BF_INT32."); \
+        } \
+    } while (0); \
+    (VAR) BF_DEREF_I32
+
 #define BF_AS_U8(VAR) \
     (((VAR).type != BF_UINT8) \
         ? (uint8_t) PANIC("wrong message element type. expected BF_UINT8.") \
@@ -70,6 +81,11 @@ typedef struct BF_MessageElement {
     (((VAR).type != BF_UINT16) \
         ? (uint8_t) PANIC("wrong message element type. expected BF_UINT16.") \
         : ((VAR) BF_DEREF_U16))
+
+#define BF_AS_I32(VAR) \
+    (((VAR).type != BF_INT32) \
+        ? (uint8_t) PANIC("wrong message element type. expected BF_INT32.") \
+        : ((VAR) BF_DEREF_I32))
 
 #define BF_SET_STR(VAR) \
     do { \

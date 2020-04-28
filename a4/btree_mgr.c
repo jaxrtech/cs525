@@ -239,7 +239,7 @@ RC openBtree (BTreeHandle **tree, char *idxId)
     indexHandle->keyType = BF_AS_U8(indexMsg.idxKeyType);
     indexHandle->mgmtData = NULL; // TODO
 
-    if (tree) {
+    if (tree != NULL) {
         *tree = indexHandle;
     }
 
@@ -270,8 +270,7 @@ RC getKeyType (BTreeHandle *tree, DataType *result){
 }
 
 // index access
-RC findKey (BTreeHand
-le *tree, Value *key, RID *result){
+RC findKey (BTreeHandle *tree, Value *key, RID *result){
 	NOT_IMPLEMENTED();
 }
 RC insertKey (BTreeHandle *tree, Value *key, RID rid){
