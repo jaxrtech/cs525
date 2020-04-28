@@ -262,7 +262,20 @@ RC closeBtree (BTreeHandle *tree)
 }
 
 RC deleteBtree (char *idxId){
+    //i assume page 3 is a page where each tuple points to a btree. we iterate through and delete the tree.
 	NOT_IMPLEMENTED();
+
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    BM_PageHandle handle;
+
+    TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_KIND_INDEX)); //pin page containing btrees
+    RM_Page *page = (RM_Page *) handle.buffer;
+
+    //TODO: delete tuple Here
+
+    TRY_OR_RETURN(markDirty(pool, &handle));
+    TRY_OR_RETURN(unpinPage(pool, &handle));
+    return RC_OK;
 }
 
 // access information about a b-tree
