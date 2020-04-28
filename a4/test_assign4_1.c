@@ -246,10 +246,10 @@ testIndexScan (void)
       openTreeScan(tree, &sc);
       i = 0;
       while((rc = nextEntry(sc, &rid)) == RC_OK)
-	{
-	  RID expRid = insert[i++];
-	  ASSERT_EQUALS_RID(expRid, rid, "did we find the correct RID?");
-	}
+    	{
+    	  RID expRid = insert[i++];
+    	  ASSERT_EQUALS_RID(expRid, rid, "did we find the correct RID?");
+    	}
       ASSERT_EQUALS_INT(RC_IM_NO_MORE_ENTRIES, rc, "no error returned by scan");
       ASSERT_EQUALS_INT(numInserts, i, "have seen all entries");
       closeTreeScan(sc);

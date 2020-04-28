@@ -9,6 +9,11 @@
 #include "tables.h"
 #include "buffer_mgr.h"
 
+//define type flags for internal and leaf nodes
+#define LEAF_NODE 0
+#define INTERNAL_NODE 1
+
+
 // structure for accessing btrees
 typedef struct BTreeHandle {
   DataType keyType;
@@ -18,16 +23,21 @@ typedef struct BTreeHandle {
 
 typedef struct BT_ScanHandle {
   BTreeHandle *tree;
-  void *mgmtData;
+  BT_ScanData *mgmtData;
 } BT_ScanHandle;
+
+typedef struct BT_ScanData {
+	Node *currentNode; //store the current leaf node
+	int nodeIdx;	   //stores the last index in the node checked.
+} BT_ScanData;
 
 typedef struct Node {
 	Node *parent; //points to parent in case we have to split or merge nodes
+	int fill;	//number of KEYS in node (check against N)
 	void *keys; //array of keys
-	void *ptrs;	//array of pointers for each key
+	void *ptrs;	//array of pointers for each key (ptrs[fill+1] is the pointer to next node)
+				//ptrs are RIDs
 } Node;
-
-#define getNode
 
 extern RC IM_writeIndexPage(BM_BufferPool *pool);
 
@@ -56,5 +66,9 @@ extern RC closeTreeScan (BT_ScanHandle *handle);
 
 // debug and test functions
 extern char *printTree (BTreeHandle *tree);
+
+//helper functions
+extern Node *getLeafNodePtr (BTreeHandle *tree, Value *key);
+extern RC binarySearchNode(Node *node, Value *key, RID *result);
 
 #endif // BTREE_MGR_H

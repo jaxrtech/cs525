@@ -298,7 +298,9 @@ Node *getLeafNodePtr(BTreeHandle *tree, Value *key){
     return node;
 }
 
-RC binarySearchNode(Node *node, Value *key, RID *result){
+RC binarySearchNode(Node *node, Value *key, RID *result, int NodeType){
+    //binary search the keys in a node and store the pointer to the value in result 
+    // will return RC_IM_KEY_NOT_FOUND if the node type is a leaf and key is nonexistent
     NOT_IMPLEMENTED();
 }
 
