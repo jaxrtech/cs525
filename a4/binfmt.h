@@ -39,6 +39,8 @@ typedef struct BF_MessageElement {
     };
 } BF_MessageElement;
 
+#define BF_LSTRING_MAX_STRLEN (UINT8_MAX)
+
 #define BF_DEREF_U8  .u8
 #define BF_DEREF_U16 .u16
 #define BF_DEREF_STR .lstring.str

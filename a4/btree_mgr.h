@@ -3,6 +3,7 @@
 
 #include "dberror.h"
 #include "tables.h"
+#include "buffer_mgr.h"
 
 // structure for accessing btrees
 typedef struct BTreeHandle {
@@ -15,6 +16,8 @@ typedef struct BT_ScanHandle {
   BTreeHandle *tree;
   void *mgmtData;
 } BT_ScanHandle;
+
+extern RC IM_writeIndexPage(BM_BufferPool *pool);
 
 // init and shutdown index manager
 extern RC initIndexManager (void *mgmtData);

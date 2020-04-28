@@ -11,6 +11,7 @@
 #include "rm_page.h"
 #include "rm_macros.h"
 #include "rm_binfmt.h"
+#include "btree_mgr.h"
 
 static RM_Metadata *g_instance = NULL;
 
@@ -19,10 +20,6 @@ static const char *const RM_MAGIC_BUF = RM_DATABASE_MAGIC;
 #define RM_DEFAULT_FILENAME "storage.db"
 #define RM_DEFAULT_NUM_POOL_PAGES (512)
 #define RM_DEFAULT_REPLACEMENT_STRATEGY (RS_LRU)
-
-//special pagenumbers
-#define RM_PAGE_DBHEADER (0) 
-#define RM_PAGE_SCHEMA (1)
 
 RM_Metadata *RM_getInstance()
 {
@@ -109,6 +106,12 @@ RC initRecordManager (void *mgmtData IGNORE_UNUSED)
         if (rc != RC_OK) {
             goto error;
         }
+
+        // Create index descriptor page
+        rc = IM_writeIndexPage(pool);
+        if (rc != RC_OK) {
+            goto error;
+        }
     }
     else {
         if ((rc = unpinPage(pool, &page)) != RC_OK) {
@@ -144,8 +147,6 @@ RC shutdownRecordManager ()
     return RC_OK;
 }
 
-#define RM_MAX_ATTR_NAME_LEN (UINT8_MAX)
-
 RC createTable (char *name, Schema *schema)
 {
     RC rc;
@@ -158,7 +159,7 @@ RC createTable (char *name, Schema *schema)
     }
 
     uint64_t tableNameLength = strlen(name);
-    if (tableNameLength <= 0 || tableNameLength > RM_MAX_ATTR_NAME_LEN) {
+    if (tableNameLength <= 0 || tableNameLength > BF_LSTRING_MAX_STRLEN) {
         return RC_RM_NAME_TOO_LONG;       
     }
 
@@ -182,7 +183,7 @@ RC createTable (char *name, Schema *schema)
     size_t attrsSizeBytes = numColumns * sizeof(RM_SCHEMA_ATTR_FORMAT);
     struct RM_SCHEMA_ATTR_FORMAT_T *attrs = malloc(attrsSizeBytes);
     for (int i = 0; i < numColumns; i++) {
-        if (strlen(schema->attrNames[i]) > RM_MAX_ATTR_NAME_LEN) {
+        if (strlen(schema->attrNames[i]) > BF_LSTRING_MAX_STRLEN) {
             return RC_RM_NAME_TOO_LONG;
         }
         
@@ -269,7 +270,7 @@ RC findTable(
         }
 
         //printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
-        fflush(stdout);
+//        fflush(stdout);
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
         schemaMsg = RM_SCHEMA_FORMAT;

@@ -12,6 +12,11 @@ typedef struct RM_Metadata {
 
 extern RM_Metadata *RM_getInstance();
 
+//special pagenumbers
+#define RM_PAGE_DBHEADER (0)
+#define RM_PAGE_SCHEMA   (1)
+#define RM_PAGE_INDEX    (2)
+
 // Bookkeeping for scans
 typedef struct RM_ScanHandle
 {
