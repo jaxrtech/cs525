@@ -1,6 +1,10 @@
 #ifndef BTREE_MGR_H
 #define BTREE_MGR_H
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+
 #include "dberror.h"
 #include "tables.h"
 #include "buffer_mgr.h"
@@ -16,6 +20,14 @@ typedef struct BT_ScanHandle {
   BTreeHandle *tree;
   void *mgmtData;
 } BT_ScanHandle;
+
+typedef struct Node {
+	Node *parent; //points to parent in case we have to split or merge nodes
+	void *keys; //array of keys
+	void *ptrs;	//array of pointers for each key
+} Node;
+
+#define getNode
 
 extern RC IM_writeIndexPage(BM_BufferPool *pool);
 

@@ -61,14 +61,14 @@ RC initIndexManager(void *mgmtData IGNORE_UNUSED)
 
     goto success;
 
-fail:
-    free(g_instance);
-    g_instance = NULL;
-    return rc;
+    fail:
+        free(g_instance);
+        g_instance = NULL;
+        return rc;
 
-success:
-    g_instance->recordManager = recordManager;
-    return RC_OK;
+    success:
+        g_instance->recordManager = recordManager;
+        return RC_OK;
 }
 
 RC shutdownIndexManager()
@@ -154,10 +154,9 @@ RC createBtree (char *idxId, DataType keyType, int n)
 
     rc = RC_OK;
 
-finally:
-    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
-    return rc;
-
+    finally:
+        TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+        return rc;
 }
 
 RC IM_findIndex(
@@ -193,7 +192,7 @@ RC IM_findIndex(
         }
 
         //printf("openTable: [tup#%d] pg = %p, pg->data = %p, slot_off = %d, off = %d\n", i, pg, &pg->dataBegin, slot, *off);
-//        fflush(stdout);
+        //fflush(stdout);
         tup = (RM_PageTuple *) (&pg->dataBegin + *off);
 
         indexMsg = IM_DESCRIPTOR_FORMAT;
@@ -243,6 +242,8 @@ RC openBtree (BTreeHandle **tree, char *idxId)
     BTreeHandle *indexHandle = malloc(sizeof(BTreeHandle));
     indexHandle->idxId = idxId;
     indexHandle->keyType = BF_AS_U8(indexMsg.idxKeyType);
+
+    //store the data of the first page for the tree 
     indexHandle->mgmtData = NULL; // TODO
 
     if (tree != NULL) {
@@ -275,24 +276,72 @@ RC getKeyType (BTreeHandle *tree, DataType *result){
 	NOT_IMPLEMENTED();
 }
 
+//look for leaf node that MIGHT contain a key
+Node *getLeafNodePtr(BTreeHandle *tree, Value *key){
+    //assume NULL key is to get the min value
+    Node *node;
+    //search tree here
+    NOT_IMPLEMENTED();
+    return node;
+}
+
+RC binarySearchNode(Node *node, Value *key, RID *result){
+    NOT_IMPLEMENTED();
+}
+
 // index access
 RC findKey (BTreeHandle *tree, Value *key, RID *result){
-	NOT_IMPLEMENTED();
+    //get datatype from header info
+    //navigate tree and return RID with search key (Value *key) or RC_IM_KEY_NOT_FOUND
+    Node *leaf = getLeafNodePtr(tree, key);
+    RC rc = binarySearchNode(leaf, key, result);
+    return rc;
 }
+
+
 RC insertKey (BTreeHandle *tree, Value *key, RID rid){
+    //inserts a new key/recordptr into the tree (NO DUPLICATES) 
+    // returns RC_OK or RC_IM_KEY_ALREADY_EXISTS
 	NOT_IMPLEMENTED();
 }
 RC deleteKey (BTreeHandle *tree, Value *key){
-	NOT_IMPLEMENTED();
+    //delete key and record pointer from tree and rebalance or RC_IM_KEY_NOT_FOUND
+    NOT_IMPLEMENTED();
 }
 RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle){
-	NOT_IMPLEMENTED();
+    handle = malloc(sizeof BT_ScanHandle);
+	handle->tree = tree;
+
+    BT_ScanData *scandata = malloc(sizeof BT_ScanData);
+    scandata->currentNode = getLeafNodePtr(tree, NULL); //get leftmost leaf node
+    scandata->nodeIdx = 0;
+    handle->mgmtData = scandata;
+
+    return RC_OK;
 }
+
 RC nextEntry (BT_ScanHandle *handle, RID *result){
-	NOT_IMPLEMENTED();
+    //loads current node and stores the RID pointer in result
+    BT_ScanData *sd = handle->mgmtData;
+    int idx = sd->nodeIdx;
+    /* * load current node and current index
+	   * store resultant RID in result
+       * check if idx < fill
+            ** if not, RC_OK
+            ** else, check last ptr in node
+                *** if NULL, RC_IM_NO_MORE_ENTRIES
+                *** else, sd->nodeIdx = 0; curren node = last ptr of prev node.
+    */
+    NOT_IMPLEMENTED();
+
+    return RC_OK;
 }
+
 RC closeTreeScan (BT_ScanHandle *handle){
-	NOT_IMPLEMENTED();
+	BT_ScanData *data = handle->mgmtData;
+    free(data);
+    free(handle);
+    return RC_OK;
 }
 
 // debug and test functions
