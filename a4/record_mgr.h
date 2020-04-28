@@ -4,6 +4,13 @@
 #include "dberror.h"
 #include "expr.h"
 #include "tables.h"
+#include "buffer_mgr.h"
+
+typedef struct RM_Metadata {
+    BM_BufferPool *bufferPool;
+} RM_Metadata;
+
+extern RM_Metadata *RM_getInstance();
 
 // Bookkeeping for scans
 typedef struct RM_ScanHandle

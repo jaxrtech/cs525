@@ -12,10 +12,6 @@
 #include "rm_macros.h"
 #include "rm_binfmt.h"
 
-typedef struct RM_Metadata {
-    BM_BufferPool *bufferPool;
-} RM_Metadata;
-
 static RM_Metadata *g_instance = NULL;
 
 static const char *const RM_MAGIC_BUF = RM_DATABASE_MAGIC;
@@ -27,6 +23,11 @@ static const char *const RM_MAGIC_BUF = RM_DATABASE_MAGIC;
 //special pagenumbers
 #define RM_PAGE_DBHEADER (0) 
 #define RM_PAGE_SCHEMA (1)
+
+RM_Metadata *RM_getInstance()
+{
+    return g_instance;
+}
 
 static RC RM_writeDatabaseHeader(BM_BufferPool *pool)
 {

@@ -26,6 +26,7 @@ typedef uint16_t RM_PageFlags;
 typedef uint8_t RM_PageKind;
 #define RM_PAGE_KIND_SCHEMA 1
 #define RM_PAGE_KIND_DATA   2
+#define RM_PAGE_KIND_INDEX  3
 #define RM_PAGE_KIND_FREE   0xff
 
 typedef struct PACKED_STRUCT RM_PageHeader {
