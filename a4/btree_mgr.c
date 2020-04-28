@@ -67,6 +67,7 @@ fail:
     return rc;
 
 success:
+    g_instance->recordManager = recordManager;
     return RC_OK;
 }
 
@@ -95,10 +96,13 @@ RC createBtree (char *idxId, DataType keyType, int n)
 
     //check if index with same name already exists
     BTreeHandle *temp = NULL;
+
+    /*
     if ((openBtree(&temp, idxId)) == RC_OK){
         closeBtree(temp);
         return RC_IM_KEY_ALREADY_EXISTS;
     }
+    */
 
     //
     // Initialize root index node page
@@ -107,6 +111,7 @@ RC createBtree (char *idxId, DataType keyType, int n)
     BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
 
+    printf("%d\n", dataPageNum);
     BM_PageHandle dataPageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
     RM_Page_init(dataPageHandle.buffer, dataPageNum, RM_PAGE_KIND_INDEX);
@@ -152,6 +157,7 @@ RC createBtree (char *idxId, DataType keyType, int n)
 finally:
     TRY_OR_RETURN(unpinPage(pool, &pageHandle));
     return rc;
+
 }
 
 RC IM_findIndex(

@@ -69,6 +69,7 @@ testInsertAndFind (void)
   TEST_CHECK(initIndexManager(NULL));
   TEST_CHECK(createBtree("testidx", DT_INT, 2));
   TEST_CHECK(openBtree(&tree, "testidx"));
+  printf("TEST OPEN\n");
 
   // insert keys
   for(i = 0; i < numInserts; i++)
