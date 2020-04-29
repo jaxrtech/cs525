@@ -19,9 +19,12 @@ typedef struct PACKED_STRUCT RM_DatabaseHeader {
 } RM_DatabaseHeader;
 
 typedef uint16_t RM_PageFlags;
-#define RM_PAGE_FLAGS_HAS_FREE_PTRS  (1u << 0u)  /* if page has space for additional slot pointers */
-#define RM_PAGE_FLAGS_TUPS_FULL      (1u << 1u)  /* if page has no space for additional tuples */
-#define RM_PAGE_FLAGS_HAS_TRAILING   (1u << 2u)  /* if page has trailing re-space after tuples */
+#define RM_PAGE_FLAGS_HAS_FREE_PTRS  ((RM_PageFlags) (1u << 0u))  /* if page has space for additional slot pointers */
+#define RM_PAGE_FLAGS_TUPS_FULL      ((RM_PageFlags) (1u << 1u))  /* if page has no space for additional tuples */
+#define RM_PAGE_FLAGS_HAS_TRAILING   ((RM_PageFlags) (1u << 2u))  /* if page has trailing re-space after tuples */
+#define RM_PAGE_FLAGS_INDEX_ROOT     ((RM_PageFlags) (1u << 3u))
+#define RM_PAGE_FLAGS_INDEX_INNER    ((RM_PageFlags) (1u << 4u))
+#define RM_PAGE_FLAGS_INDEX_LEAF     ((RM_PageFlags) (1u << 5u))
 
 typedef uint8_t RM_PageKind;
 #define RM_PAGE_KIND_SCHEMA 1
@@ -101,6 +104,11 @@ typedef struct PACKED_STRUCT RM_PageTuple {
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
 RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len);
 
-void *RM_Page_getTuple(RM_Page *page, Record *record, RID rid);
+RM_PageTuple *RM_Page_getTuple(
+        RM_Page *self,
+        RM_PageSlotId slotIdx,
+        RM_PageSlotPtr **ptr_out);
+void *RM_Page_getRecord(RM_Page *self, Record *record, RID rid);
 void RM_Page_setTuple(RM_Page *self, Record *r);
 void RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId);
+void RM_page_deleteAllTuples(RM_Page *self);

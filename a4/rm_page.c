@@ -6,18 +6,29 @@
 #include "rm_page.h"
 #include "rm_macros.h"
 
+void RM_page_deleteAllTuples(RM_Page *self) {
+    // Clear storage
+    memset(&self->dataBegin, 0, RM_PAGE_DATA_SIZE);
+
+    // Reset any storage flags
+    self->header.flags &= (RM_PageFlags) ~RM_PAGE_FLAGS_TUPS_FULL;
+    self->header.flags &= (RM_PageFlags) ~RM_PAGE_FLAGS_HAS_TRAILING;
+
+    // Set any other flags to empty
+    self->header.flags |= RM_PAGE_FLAGS_HAS_FREE_PTRS;
+    self->header.numTuples = 0;
+    self->header.freespaceLowerOffset = 0;                      //next available byte in page
+    self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
+    self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
+}
 
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) {
     memset(buffer, 0x0, PAGE_SIZE);
     RM_Page *self = buffer;
     self->header.pageNum = pageNumber;
     self->header.kind = kind;
-    self->header.flags = RM_PAGE_FLAGS_HAS_FREE_PTRS;
-    self->header.numTuples = 0;
-    self->header.freespaceLowerOffset = 0;                      //next available byte in page
-    self->header.freespaceUpperEnd = RM_PAGE_DATA_SIZE;         //byte where tuple data starts
-    self->header.freespaceTrailingOffset = 0;                   //first available byte after tuple
     self->header.nextPageNum = -1;                              //-1 if no tuples on another page
+    RM_page_deleteAllTuples(self);
     return self;
 }
 
@@ -70,8 +81,24 @@ RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len) {
     return tup;
 }
 
+RM_PageTuple *RM_Page_getTuple(
+        RM_Page *self,
+        RM_PageSlotId slotIdx,
+        RM_PageSlotPtr **ptr_out)
+{
+    size_t slot = slotIdx * sizeof(RM_PageSlotPtr);
+    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
+    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
+
+    if (ptr_out != NULL) {
+        *ptr_out = off;
+    }
+
+    return tup;
+}
+
 //assume we always have the right page from calling method 
-void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
+void *RM_Page_getRecord(RM_Page *self, Record *record, RID rid){
     uint16_t numTuples = self->header.numTuples;
     int slotNum = rid.slot; 
     if (slotNum >= numTuples) PANIC("slotNum > max slots in page");
@@ -79,7 +106,6 @@ void *RM_Page_getTuple(RM_Page *self, Record *record, RID rid){
     //get position of tuple
     size_t slot = slotNum * sizeof(RM_PageSlotPtr);
     RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
-
     RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
 
     //read the data and assign it into the record ptr

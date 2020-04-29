@@ -543,7 +543,7 @@ RC getRecord (RM_TableData *rel, RID id, Record *record) //assume RID points to 
     TRY_OR_RETURN(pinPage(pool, &handle, id.page)); //page nonexistent or RC_OK
     RM_Page *page = (RM_Page *) handle.buffer;
 
-    RM_Page_getTuple(page, record, id);
+    RM_Page_getRecord(page, record, id);
     unpinPage(pool, &handle);
     return RC_OK;
 }

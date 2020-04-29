@@ -7,6 +7,7 @@ const struct PACKED_STRUCT IM_DESCRIPTOR_FORMAT_T {
     BF_MessageElement idxName;
     BF_MessageElement idxKeyType;
     BF_MessageElement idxMaxEntriesPerNode;
+    BF_MessageElement idxRootNodePageNum;
 } IM_DESCRIPTOR_FORMAT = {
         .idxName = {
                 .name = "idx_name",
@@ -20,6 +21,10 @@ const struct PACKED_STRUCT IM_DESCRIPTOR_FORMAT_T {
                 .name = "idx_max_entries_per_node",
                 .type = BF_UINT16,
         },
+        .idxRootNodePageNum = {
+                .name = "idx_root_node_page_num",
+                .type = BF_UINT16
+        }
 };
 
 typedef struct PACKED_STRUCT IM_ENTRY_FORMAT_T {
