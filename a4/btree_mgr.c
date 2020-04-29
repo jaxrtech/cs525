@@ -589,6 +589,35 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
     TRY_OR_RETURN(unpinPage(pool, &rootPageHandle));
 }
 
+static RM_Page *IM_getLeafNode(
+        RM_Page *rootNode,
+        int searchKey,
+        uint16_t maxEntriesPerNode,
+        RM_Page **parent_out)
+{
+    if (rootNode == NULL) { PANIC("'rootNode' cannot be null"); }
+
+    RM_Page *parentNode = NULL;
+    RM_Page *node = rootNode;
+
+    do {
+        // If the root node is still a leaf node, then we don't have to go any further
+        if (IS_FLAG_SET(node->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
+            break;
+        }
+
+        // The current node must be an internal node, a RID pointer will points to the child
+        // Find the index that is less than or equal to the search key
+        uint16_t slotId = IM_getEntryInsertionIndex(searchKey, node, maxEntriesPerNode);
+
+    } while (true);
+
+    if (parent_out != NULL) {
+        *parent_out = node;
+    }
+    return node;
+}
+
 static uint16_t IM_getEntryInsertionIndex(
         const int keyValue,
         const RM_Page *page,
