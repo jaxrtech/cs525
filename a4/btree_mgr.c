@@ -121,7 +121,6 @@ RC createBtree (char *idxId, DataType keyType, int n)
     BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
 
-    printf("%d\n", dataPageNum);
     BM_PageHandle dataPageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
 
