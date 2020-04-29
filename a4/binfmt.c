@@ -17,6 +17,11 @@ BF_recomputeSize_single(BF_MessageElement *self)
             self->cached_size = size;
             return size;
 
+        case BF_INT32:
+            size += sizeof(int);
+            self->cached_size = size;
+            return size;
+
         case BF_LSTRING:
             // make sure to include the null terminator
             self->lstring.cached_strlen = strlen(self->lstring.str) + 1;
@@ -50,7 +55,8 @@ uint16_t
 BF_recomputeSize(BF_MessageElement *arr, uint8_t num_elements)
 {
     uint16_t size = 0;
-    for (int i = 0; i < num_elements; i++) {
+    int i;
+    for (i = 0; i < num_elements; i++) {
         size += BF_recomputeSize_single(&arr[i]);
     }
     return size;

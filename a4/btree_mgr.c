@@ -121,7 +121,6 @@ RC createBtree (char *idxId, DataType keyType, int n)
     BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
 
-    printf("%d\n", dataPageNum);
     BM_PageHandle dataPageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &dataPageHandle, dataPageNum));
 
@@ -719,13 +718,13 @@ RC deleteKey (BTreeHandle *tree, Value *key){
     NOT_IMPLEMENTED();
 }
 RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle){
-    BT_ScanHandle *h = malloc(sizeof BT_ScanHandle);
+    BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
 	h->tree = tree;
 
-    BT_ScanData *scandata = malloc(sizeof BT_ScanData);
+    BT_ScanData *scandata = malloc(sizeof (BT_ScanData));
     scandata->currentNode = getLeafNodePtr(tree, NULL); //get leftmost leaf node
     scandata->nodeIdx = 0;
-    handle->mgmtData = scandata;
+    (*handle)->mgmtData = scandata;
 
     return RC_OK;
 }
