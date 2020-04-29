@@ -174,6 +174,20 @@ RC createBtree (char *idxId, DataType keyType, int n)
         return rc;
 }
 
+void IM_readEntryI32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result, size_t n)
+{
+    if (tup == NULL) { PANIC("'tup' cannot be null"); }
+    if (result == NULL) { PANIC("'result' cannot be null"); }
+    if (n == 0) { PANIC("'size' must be greater than zero byets"); }
+
+    *result = IM_ENTRY_FORMAT_OF_INT32;
+    uint16_t read = BF_read(
+            (BF_MessageElement *) result,
+            &tup->dataBegin,
+            BF_NUM_ELEMENTS(n));
+    if (read > tup->len) { PANIC("buffer overrun"); }
+}
+
 RC IM_findIndex(
         char *name,
         BM_PageHandle *page_out,
@@ -542,13 +556,9 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
                 // Get the key value of the first element in the right node
                 RM_PageSlotId referenceSlotIdx = 0;
                 RM_PageTuple *referenceTup = RM_Page_getTuple(rightPage, referenceSlotIdx, NULL);
-                IM_ENTRY_FORMAT_T referenceEntry = IM_ENTRY_FORMAT_OF_INT32;
-                uint16_t read = BF_read(
-                        (BF_MessageElement *) &referenceEntry,
-                        &referenceTup->dataBegin,
-                        BF_NUM_ELEMENTS(sizeof(referenceEntry)));
-                if (read > referenceTup->len) { PANIC("buffer overrun"); }
 
+                IM_ENTRY_FORMAT_T referenceEntry;
+                IM_readEntryI32(referenceTup, &referenceEntry, sizeof(referenceEntry));
                 int32_t referenceEntryKey = BF_AS_I32(referenceEntry.idxEntryKey);
 
                 // Insert entry that links to the first element in the right node
@@ -569,8 +579,12 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
                         BF_NUM_ELEMENTS(sizeof(linkEntry)));
                 if (wrote > linkTup->len) { PANIC("buffer overrun"); }
 
-            } else {
-                // TODO: Handle pushing the first entry in the right node to the parent
+            }
+            else { // if (!isRootLeaf)
+                // If the root is not a leaf node (therefore we treat it as
+                // an interior node), we must find the leaf node that the key
+                // must be inserted into
+                
             }
             
             TRY_OR_RETURN(forcePage(pool, &leftPageHandle));
@@ -589,33 +603,89 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
     TRY_OR_RETURN(unpinPage(pool, &rootPageHandle));
 }
 
-static RM_Page *IM_getLeafNode(
-        RM_Page *rootNode,
+static RM_PageNumber IM_getLeafNode(
+        RM_PageNumber rootPageNum,
         int searchKey,
         uint16_t maxEntriesPerNode,
-        RM_Page **parent_out)
+        RM_PageNumber *parent_out)
 {
-    if (rootNode == NULL) { PANIC("'rootNode' cannot be null"); }
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
 
+    BM_PageHandle parentNodeHandle = {};
     RM_Page *parentNode = NULL;
-    RM_Page *node = rootNode;
+
+    BM_PageHandle nodeHandle = {};
+    RM_Page *node = NULL;
+
+    if (pinPage(pool, &nodeHandle, rootPageNum) != RC_OK) {
+        PANIC("failed to get node page '%d'", rootPageNum);
+    }
+
+    node = (RM_Page *) nodeHandle.buffer;
+    if (node->header.kind != RM_PAGE_KIND_INDEX) {
+        PANIC("attempted to read from wrong page kind. expected index page.");
+    }
 
     do {
-        // If the root node is still a leaf node, then we don't have to go any further
+        // If the node is still a leaf node, then we don't have to go any further
         if (IS_FLAG_SET(node->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
             break;
         }
 
-        // The current node must be an internal node, a RID pointer will points to the child
+        // Otherwise, the current node must be an internal node, a RID pointer
+        // will point to the child node.
+        //
         // Find the index that is less than or equal to the search key
+        //
         uint16_t slotId = IM_getEntryInsertionIndex(searchKey, node, maxEntriesPerNode);
+
+        // Traverse to the newly selected node
+        RM_PageTuple *nextTup = RM_Page_getTuple(node, slotId, NULL);
+
+        // Determine where the next page is located
+        IM_ENTRY_FORMAT_T entry;
+        IM_readEntryI32(nextTup, &entry, sizeof(entry));
+        RM_PageNumber nextPageNum = BF_AS_U16(entry.idxEntryRidPage);
+
+        // Unpin previous parent, if available
+        if (parentNode != NULL) {
+            if (unpinPage(pool, &parentNodeHandle) != RC_OK) {
+                PANIC("failed to unpin parent node page");
+            }
+            memset(&parentNodeHandle, 0, sizeof(parentNodeHandle));
+            parentNode = NULL;
+        }
+
+        // Move current page to parent page
+        parentNode = node;
+        parentNodeHandle = nodeHandle;
+
+        // Pin the next node page
+        if (pinPage(pool, &nodeHandle, nextPageNum) != RC_OK) {
+            PANIC("failed to get node page '%d'", nextPageNum);
+        }
+        node = (RM_Page *) nodeHandle.buffer;
 
     } while (true);
 
     if (parent_out != NULL) {
-        *parent_out = node;
+        if (parentNode != NULL) {
+            *parent_out = parentNode->header.pageNum;
+            if (unpinPage(pool, &parentNodeHandle) != RC_OK) {
+                PANIC("failed to unpin parent node page");
+            }
+        }
+        else {
+            *parent_out = 0;
+        }
     }
-    return node;
+
+    RM_PageNumber nodePageNum = node->header.pageNum;
+    if (unpinPage(pool, &nodeHandle) != RC_OK) {
+        PANIC("failed to unpin node page");
+    }
+
+    return nodePageNum;
 }
 
 static uint16_t IM_getEntryInsertionIndex(
@@ -631,14 +701,8 @@ static uint16_t IM_getEntryInsertionIndex(
         RM_PageTuple *markTup = (RM_PageTuple *) (&page->dataBegin + *off);
 
         // read in entry data
-        IM_ENTRY_FORMAT_T markEntry = IM_ENTRY_FORMAT_OF_INT32;
-        uint16_t read = BF_read(
-                (BF_MessageElement *) &markEntry,
-                &markTup->dataBegin,
-                BF_NUM_ELEMENTS(sizeof(markEntry)));
-        if (read > markTup->len) {
-            PANIC("binary format reader exceeded tuple buffer size");
-        }
+        IM_ENTRY_FORMAT_T markEntry;
+        IM_readEntryI32(markTup, &markEntry, sizeof(markEntry));
 
         // stop if the current key is greater than or equal to the search
         int32_t markKey = BF_AS_I32(markEntry.idxEntryKey);
