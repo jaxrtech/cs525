@@ -66,11 +66,11 @@ typedef struct PACKED_STRUCT RM_PageHeader {
      * integer in case data in table exceeds 4096 Bytes (set to -1 if only one page)
      * allows the pages of a table to coalesce in a linkedlist fashion
      */
-    int nextPageNum;
-
+    int32_t nextPageNum;
 
 } RM_PageHeader;
 
+#define RM_PAGE_NEXT_PAGENUM_UNSET ((int32_t) -1)
 #define RM_PAGE_DATA_SIZE (PAGE_SIZE - sizeof(RM_PageHeader))
 
 typedef struct PACKED_STRUCT RM_Page {
@@ -103,8 +103,7 @@ typedef struct PACKED_STRUCT RM_PageTuple {
 
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
 RM_PageTuple *RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len);
-RM_PageTuple *
-RM_reserveTupleAtIndex(RM_Page *page, const uint16_t len, uint16_t slotNum);
+RM_PageTuple *RM_reserveTupleAtIndex(RM_Page *page, uint16_t len, uint16_t slotNum);
 
 RM_PageTuple *RM_Page_getTuple(
         RM_Page *self,

@@ -149,10 +149,10 @@ typedef struct BF_MessageElement {
 #define BF_NUM_ELEMENTS(BYTES) ((BYTES) / sizeof(BF_MessageElement))
 
 uint16_t
-BF_recomputeSize_single(BF_MessageElement *self);
+BF_recomputePhysicalSize_single(BF_MessageElement *self);
 
 uint16_t
-BF_recomputeSize(BF_MessageElement *arr, uint8_t num_elements);
+BF_recomputePhysicalSize(BF_MessageElement *arr, uint8_t num_elements);
 
 uint16_t
 BF_write_single(BF_MessageElement *self, void *buffer);

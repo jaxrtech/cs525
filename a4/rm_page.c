@@ -29,7 +29,8 @@ RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) {
     RM_Page *self = buffer;
     self->header.pageNum = pageNumber;
     self->header.kind = kind;
-    self->header.nextPageNum = -1;                              //-1 if no tuples on another page
+    self->header.nextPageNum = RM_PAGE_NEXT_PAGENUM_UNSET;
+    // another page
     RM_page_deleteAllTuples(self);
     return self;
 }

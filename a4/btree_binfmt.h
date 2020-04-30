@@ -33,7 +33,7 @@ typedef struct PACKED_STRUCT IM_ENTRY_FORMAT_T {
     BF_MessageElement idxEntryRidSlot;
 } IM_ENTRY_FORMAT_T;
 
-const IM_ENTRY_FORMAT_T IM_ENTRY_FORMAT_OF_INT32 = {
+const IM_ENTRY_FORMAT_T IM_ENTRY_FORMAT_OF_I32 = {
         .idxEntryKey = {
                 .name = "idx_entry_key",
                 .type = BF_INT32,

@@ -205,7 +205,7 @@ RC createTable (char *name, Schema *schema)
         keysDisk[i] = (uint8_t) schema->keyAttrs[i];
     }
     BF_SET_ARRAY_U8(schemaDisk.tblKeys, keysDisk, keysDiskSize);
-    uint16_t spaceRequired = BF_recomputeSize(
+    uint16_t spaceRequired = BF_recomputePhysicalSize(
             (BF_MessageElement *) &schemaDisk,
             BF_NUM_ELEMENTS(sizeof(schemaDisk)));
 

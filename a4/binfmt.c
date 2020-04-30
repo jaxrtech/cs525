@@ -3,7 +3,7 @@
 #include <string.h>
 
 uint16_t
-BF_recomputeSize_single(BF_MessageElement *self)
+BF_recomputePhysicalSize_single(BF_MessageElement *self)
 {
     uint16_t size = 0;
     switch (self->type) {
@@ -40,7 +40,7 @@ BF_recomputeSize_single(BF_MessageElement *self)
             const uint8_t n = self->array_msg.data_count;
             size += sizeof(uint8_t); // store number of data elements
             for (int i = 0; i < n; i++) {
-                size += BF_recomputeSize_single(&self->array_msg.data[i]);
+                size += BF_recomputePhysicalSize_single(&self->array_msg.data[i]);
             }
             self->cached_size = size;
             return size;
@@ -52,12 +52,12 @@ BF_recomputeSize_single(BF_MessageElement *self)
 }
 
 uint16_t
-BF_recomputeSize(BF_MessageElement *arr, uint8_t num_elements)
+BF_recomputePhysicalSize(BF_MessageElement *arr, uint8_t num_elements)
 {
     uint16_t size = 0;
     int i;
     for (i = 0; i < num_elements; i++) {
-        size += BF_recomputeSize_single(&arr[i]);
+        size += BF_recomputePhysicalSize_single(&arr[i]);
     }
     return size;
 }
@@ -65,7 +65,7 @@ BF_recomputeSize(BF_MessageElement *arr, uint8_t num_elements)
 uint16_t
 BF_write_single(BF_MessageElement *self, void *buffer)
 {
-    BF_recomputeSize_single(self);
+    BF_recomputePhysicalSize_single(self);
     void *buffer_orig = buffer;
 
     switch (self->type) {
@@ -75,6 +75,10 @@ BF_write_single(BF_MessageElement *self, void *buffer)
 
         case BF_UINT16:
             RM_BUF_WRITE(buffer, uint16_t, self->u16);
+            break;
+
+        case BF_INT32:
+            RM_BUF_WRITE(buffer, int32_t, self->i32);
             break;
 
         case BF_LSTRING:
@@ -94,6 +98,9 @@ BF_write_single(BF_MessageElement *self, void *buffer)
             }
             break;
         }
+
+        default:
+            PANIC("unsupported binfmt data type: %d", self->type);
     }
 
     return ((char *) buffer) - ((char *) buffer_orig);
@@ -125,6 +132,10 @@ BF_read_single(BF_MessageElement *self, void *buffer)
             RM_BUF_READ(buffer, uint16_t, self->u16);
             break;
 
+        case BF_INT32:
+            RM_BUF_READ(buffer, int32_t, self->i32);
+            break;
+
         case BF_LSTRING:
             RM_BUF_READ(buffer, uint8_t, self->lstring.cached_strlen);
             self->lstring.str = (char *) buffer;
@@ -149,6 +160,9 @@ BF_read_single(BF_MessageElement *self, void *buffer)
             }
             break;
         }
+
+        default:
+            PANIC("unsupported binfmt data type: %d", self->type);
     }
 
     return ((char *) buffer) - ((char *) buffer_orig);
