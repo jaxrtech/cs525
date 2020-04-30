@@ -44,5 +44,15 @@ static void *panic_fmt(char *fmt, ...)
 
 #define IGNORE_UNUSED __attribute__((unused))
 
-#define IS_FLAG_SET(FLAG, MASK)    (((FLAG) & (MASK)) != 0)
-#define IS_FLAG_UNSET(FLAG, MASK)  (((FLAG) & (MASK)) == 0)
+#define IS_FLAG_SET(X, FLAG)    (((X) & (FLAG)) != 0)
+#define IS_FLAG_UNSET(X, FLAG)  (((X) & (FLAG)) == 0)
+
+#define SET_FLAG(X, FLAG) \
+    do { \
+        X |= FLAG; \
+    } while (0)
+
+#define UNSET_FLAG(X, FLAG) \
+    do { \
+        X &= (typeof(X)) ~(FLAG); \
+    } while (0)

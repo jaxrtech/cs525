@@ -30,6 +30,7 @@ main (void)
 {
   testName = "";
 
+  destroyPageFile("storage.db");
   testInsertAndFind();
   testDelete();
   testIndexScan();
@@ -74,6 +75,7 @@ testInsertAndFind (void)
   for(i = 0; i < numInserts; i++){
     TEST_CHECK(insertKey(tree, keys[i], insert[i]));
     printf("TEST INSERT %d\n", i);
+    fflush(stdout);
   }
 
   // check index stats

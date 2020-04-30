@@ -216,7 +216,7 @@ RC createTable (char *name, Schema *schema)
     TRY_OR_RETURN(pinPage(pool, &pageHandle, RM_PAGE_SCHEMA));
 
     RM_Page *page = (RM_Page *) pageHandle.buffer;
-    RM_PageTuple *tup = RM_Page_reserveTuple(page, spaceRequired);
+    RM_PageTuple *tup = RM_Page_reserveTupleAtEnd(page, spaceRequired);
     if (tup == NULL) {
         rc = RC_RM_NO_MORE_TUPLES;
         goto finally;
@@ -458,7 +458,7 @@ RC insertRecord (RM_TableData *rel, Record *record)
         RM_Page *page = (RM_Page *) pageHandle.buffer;
         RM_PageHeader *pageHeader = &page->header;
 
-        RM_PageTuple *tup = RM_Page_reserveTuple(page, recordSize);
+        RM_PageTuple *tup = RM_Page_reserveTupleAtEnd(page, recordSize);
         if (tup == NULL) {
             unpinPage(pool, &pageHandle);
             //check overflow pages. if none, create and link them

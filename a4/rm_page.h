@@ -102,13 +102,15 @@ typedef struct PACKED_STRUCT RM_PageTuple {
     sizeof(RM_PageSlotId) + sizeof(RM_PageSlotLength) + (DATA_SIZE)
 
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
-RM_PageTuple *RM_Page_reserveTuple(RM_Page *self, uint16_t len);
+RM_PageTuple *RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len);
+RM_PageTuple *
+RM_reserveTupleAtIndex(RM_Page *page, const uint16_t len, uint16_t slotNum);
 
 RM_PageTuple *RM_Page_getTuple(
         RM_Page *self,
         RM_PageSlotId slotIdx,
         RM_PageSlotPtr **ptr_out);
-void *RM_Page_getRecord(RM_Page *self, Record *record, RID rid);
+void RM_Page_getRecord(RM_Page *self, Record *record, RID rid);
 void RM_Page_setTuple(RM_Page *self, Record *r);
 void RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId);
 void RM_page_deleteAllTuples(RM_Page *self);
