@@ -646,11 +646,12 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
     IM_readEntry_i32(referenceTup, &referenceEntry, sizeof(referenceEntry));
     int32_t linkEntryKey = BF_AS_I32(referenceEntry.idxEntryKey);
 
-    // Insert entry that links to the first element in the right node
+    // Insert entry that links to *left* node using
+    // the key value of the *right* node's first entry
     IM_ENTRY_FORMAT_T linkEntry = IM_ENTRY_FORMAT_OF_I32;
     BF_SET_I32(linkEntry.idxEntryKey) = linkEntryKey;
-    BF_SET_U16(linkEntry.idxEntryRidPage) = leafSplit.rightPageNum;
-    BF_SET_U16(linkEntry.idxEntryRidSlot) = referenceSlotIdx;
+    BF_SET_U16(linkEntry.idxEntryRidPage) = leafSplit.leftPageNum;
+    BF_SET_U16(linkEntry.idxEntryRidSlot) = 0; // ignored
 
     uint16_t linkEntrySize = BF_recomputePhysicalSize(
             (BF_MessageElement *) &linkEntry,
@@ -698,38 +699,42 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
                 //
                 int32_t oldRightMostPageNum = parentPage->header.nextPageNum;
 
-                RID oldRightMostFirstEntryRid = {
+                RID rightNodeFirstEntryRid = {
                         .page = oldRightMostPageNum,
                         .slot = 0};
 
-                IM_ENTRY_FORMAT_T oldRightMostFirstEntry;
+                IM_ENTRY_FORMAT_T rightNodeFirstEntry;
                 TRY_OR_RETURN(IM_getEntryAt_i32(
                         pool,
-                        oldRightMostFirstEntryRid,
-                        &oldRightMostFirstEntry));
+                        rightNodeFirstEntryRid,
+                        &rightNodeFirstEntry));
 
-                int32_t oldRightMostFirstEntryValue =
-                        BF_AS_I32(oldRightMostFirstEntry.idxEntryKey);
+                int32_t rightNodeFirstEntryValue =
+                        BF_AS_I32(rightNodeFirstEntry.idxEntryKey);
 
                 // Make the new entry to the inserted into the parent page
-                IM_ENTRY_FORMAT_T newRightMostEntry;
-                IM_makeEntry_i32(
-                        &newRightMostEntry,
-                        oldRightMostFirstEntryValue,
-                        oldRightMostFirstEntryRid);
+                // using the *right-node* value, linked to the *left-node*
+                // (for anything less than that key)
+                RID leftNodeRid = {.page = leafSplit.leftPageNum, .slot = 0};
 
-                uint16_t newRightMostEntryPhysSize = BF_recomputePhysicalSize(
-                        (BF_MessageElement *) &newRightMostEntry,
-                        BF_NUM_ELEMENTS(sizeof(newRightMostEntry)));
+                IM_ENTRY_FORMAT_T newParentLinkEntry;
+                IM_makeEntry_i32(
+                        &newParentLinkEntry,
+                        rightNodeFirstEntryValue,
+                        leftNodeRid);
+
+                uint16_t newParentLinkEntryPhysSize = BF_recomputePhysicalSize(
+                        (BF_MessageElement *) &newParentLinkEntry,
+                        BF_NUM_ELEMENTS(sizeof(newParentLinkEntry)));
 
                 // Insert the new entry at the end
-                RM_PageTuple *newRightMostTup = RM_Page_reserveTupleAtEnd(
+                RM_PageTuple *newParentLinkTup = RM_Page_reserveTupleAtEnd(
                         parentPage,
-                        newRightMostEntryPhysSize);
+                        newParentLinkEntryPhysSize);
 
-                BF_write((BF_MessageElement *) &newRightMostEntry,
-                         &newRightMostTup->dataBegin,
-                         BF_NUM_ELEMENTS(sizeof(newRightMostEntry)));
+                BF_write((BF_MessageElement *) &newParentLinkEntry,
+                         &newParentLinkTup->dataBegin,
+                         BF_NUM_ELEMENTS(sizeof(newParentLinkEntry)));
             }
 
             // Set the next page num to what we wanted to insert
