@@ -6,7 +6,8 @@
 
 #ifndef __RM_PANIC_FMT__
 #define __RM_PANIC_FMT__
-static void *panic_fmt(char *fmt, ...)
+__attribute__((noreturn)) static void *
+panic_fmt(char *fmt, ...)
 {
     va_list myargs;
     va_start(myargs, fmt);
