@@ -13,6 +13,7 @@
 #include "replacement_strategy.h"
 #include "freespace.h"
 #include "debug.h"
+#include "rm_macros.h"
 
 //Helper Functions
 typedef enum BM_EvictMode {
@@ -232,10 +233,13 @@ RC forcePage (BM_BufferPool *const bm, BM_PageHandle *const page) {
 }
 
 RC pinPage (
-        BM_BufferPool *const bm,
+        BM_BufferPool *bm,
         BM_PageHandle *const page,
         const PageNumber pageNum)
 {
+    PANIC_IF_NULL(bm);
+    PANIC_IF_NULL(page);
+
 	BP_Metadata *meta = bm->mgmtData;
     BM_LinkedList *pageTable = meta->pageDescriptors;
 	SM_FileHandle *storage = meta->fileHandle;

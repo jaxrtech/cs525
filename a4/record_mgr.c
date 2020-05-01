@@ -1,17 +1,12 @@
-#include <errno.h> 
-#include "record_mgr.h"
-#include "storage_mgr.h"
-//#include "tables.h"
-
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "buffer_mgr.h"
 #include "rm_page.h"
 #include "rm_macros.h"
 #include "rm_binfmt.h"
-#include "btree_mgr.h"
+#include "btree.h"
+
+#include "record_mgr.h"
 
 static RM_Metadata *g_instance = NULL;
 
@@ -645,9 +640,7 @@ RC closeScan (RM_ScanHandle *scan)
 // dealing with schemas
 int getRecordSize (Schema *schema)
 {
-    if (schema == NULL) {
-        PANIC("`schema` cannot be null");
-    }
+    PANIC_IF_NULL(schema);
 
     int total = 0;
     int n = schema->numAttr;

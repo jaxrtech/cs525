@@ -36,6 +36,11 @@ panic_fmt(char *fmt, ...)
             __FUNCTION__, \
             ##vargs)
 
+#define PANIC_IF_NULL(VAR) \
+    do { \
+        if ((VAR) == NULL) { PANIC("'%s' cannot be null", #VAR); } \
+    } while (0)
+
 //tries to do ACTION and returns the RC if it fails
 #define TRY_OR_RETURN(ACTION) \
     do { \

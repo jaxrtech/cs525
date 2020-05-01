@@ -8,7 +8,9 @@ all: test_assign4_1 test_expr #test_binfmt
 HEADERS = $(wildcard *.h)
 DEPS_CORE = \
 	storage_mgr.c \
-	btree_mgr.c\
+	btree_mgr.c \
+	btree.c \
+	btree_binfmt.c \
 	buffer_mgr_stat.c \
 	dberror.c \
 	buffer_mgr.c \

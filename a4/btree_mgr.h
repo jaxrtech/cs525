@@ -1,3 +1,4 @@
+#pragma once
 #ifndef BTREE_MGR_H
 #define BTREE_MGR_H
 
@@ -12,7 +13,6 @@
 //define type flags for internal and leaf nodes
 #define LEAF_NODE 0
 #define INTERNAL_NODE 1
-
 
 // structure for accessing btrees
 typedef struct BTreeHandle {
@@ -38,9 +38,6 @@ typedef struct BT_ScanHandle {
   BTreeHandle *tree;
   BT_ScanData *mgmtData;
 } BT_ScanHandle;
-
-
-extern RC IM_writeIndexPage(BM_BufferPool *pool);
 
 // init and shutdown index manager
 extern RC initIndexManager (void *mgmtData);

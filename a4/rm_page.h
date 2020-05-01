@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <assert.h>
 
+#include "tables.h"
+
 #define RM_DATABASE_MAGIC "FANCYDB"
 #define RM_DATABASE_MAGIC_LEN  (8)
 //static_assert(sizeof(RM_DATABASE_MAGIC) <= RM_DATABASE_MAGIC_LEN, "database magic length mismatch");

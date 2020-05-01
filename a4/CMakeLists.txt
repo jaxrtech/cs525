@@ -19,5 +19,7 @@ add_executable(test_assign4_1
         binfmt.c
         tables.c
 
+        btree.c
+        btree_binfmt.c
         btree_mgr.c
         )
