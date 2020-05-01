@@ -1334,8 +1334,8 @@ IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out,
-        IM_NodeTrace **trace_out)
+        RM_PageNumber *parent_out_opt,
+        IM_NodeTrace **trace_out_opt)
 {
     PANIC_IF_NULL(pool);
 
@@ -1346,7 +1346,7 @@ IM_getLeafNode(
     RM_Page *node = NULL;
 
     IM_NodeTrace *trace = NULL;
-    if (trace_out != NULL) {
+    if (trace_out_opt != NULL) {
         trace = malloc(sizeof(IM_NodeTrace));
         trace->entryLen = 0;
         trace->entryCapacity = IM_NODETRACE_INITIAL_CAPACITY;
@@ -1433,23 +1433,95 @@ IM_getLeafNode(
         PANIC("failed to unpin node page");
     }
 
-    if (parent_out != NULL) {
+    if (parent_out_opt != NULL) {
         if (parentNode != NULL) {
-            *parent_out = parentNode->header.pageNum;
+            *parent_out_opt = parentNode->header.pageNum;
             if (unpinPage(pool, &parentNodeHandle) != RC_OK) {
                 PANIC("failed to unpin parent node page");
             }
         }
         else {
-            *parent_out = rootPageNum;
+            *parent_out_opt = rootPageNum;
         }
     }
 
-    if (trace_out != NULL) {
-        *trace_out = trace;
+    if (trace_out_opt != NULL) {
+        *trace_out_opt = trace;
     }
 
     return nodePageNum;
+}
+
+typedef uint8_t IM_GetEntryOp;
+#define IM_GETENTRY_OP_COUNT (5)
+#define IM_GETENTRY_OP_EQ (0)
+#define IM_GETENTRY_OP_LT (1)
+#define IM_GETENTRY_OP_GT (2)
+#define IM_GETENTRY_OP_GE (3)
+#define IM_GETENTRY_OP_LE (4)
+
+typedef int32_t (*IM_GetEntryOpFn)(int32_t, int32_t);
+#define IM_GETENTRY_OP_DECL(IDENT, OP) \
+    int32_t IM_GETENTRY_OP_##IDENT##_FN(int32_t a, int32_t b) { return a OP b; }
+
+#define IM_GETENTRY_OP_LOOKUP(IDENT) \
+    [IM_GETENTRY_OP_##IDENT] = IM_GETENTRY_OP_##IDENT##_FN
+
+static IM_GETENTRY_OP_DECL(EQ, ==)
+static IM_GETENTRY_OP_DECL(LT, <)
+static IM_GETENTRY_OP_DECL(LE, <=)
+static IM_GETENTRY_OP_DECL(GT, >)
+static IM_GETENTRY_OP_DECL(GE, >=)
+
+IM_GetEntryOpFn IM_GETENTRY_OP_FN_LOOKUP[IM_GETENTRY_OP_COUNT] = {
+        IM_GETENTRY_OP_LOOKUP(EQ),
+        IM_GETENTRY_OP_LOOKUP(LT),
+        IM_GETENTRY_OP_LOOKUP(LE),
+        IM_GETENTRY_OP_LOOKUP(GT),
+        IM_GETENTRY_OP_LOOKUP(GE),
+};
+
+uint16_t
+IM_getEntryIndexByPredicate(
+        const int32_t keyValue,
+        RM_Page *page,
+        IM_GetEntryOp op,
+        uint16_t maxEntriesPerNode,
+        IM_ENTRY_FORMAT_T *entry_out_opt,
+        uint16_t *numSlots_out_opt)
+{
+    uint16_t numTuples = page->header.numTuples;
+    uint16_t maxSlots =
+            (numTuples < maxEntriesPerNode)
+            ? numTuples
+            : maxEntriesPerNode;
+
+    if (numSlots_out_opt != NULL) {
+        *numSlots_out_opt = maxSlots;
+    }
+
+    IM_ENTRY_FORMAT_T markEntry;
+    uint16_t slotNum = 0;
+    for (; slotNum < maxSlots; slotNum++) {
+        // get position of tuple
+        size_t slot = slotNum * sizeof(RM_PageSlotPtr);
+        RM_PageTuple *markTup = RM_Page_getTuple(page, slotNum, NULL);
+
+        // read in entry data
+        IM_readEntry_i32(markTup, &markEntry, sizeof(markEntry));
+
+        // stop if predicate matches
+        int32_t markKey = BF_AS_I32(markEntry.idxEntryKey);
+        IM_GetEntryOpFn fn = IM_GETENTRY_OP_FN_LOOKUP[op];
+        if (fn(markKey, keyValue)) {
+            if (entry_out_opt != NULL) {
+                *entry_out_opt = markEntry;
+            }
+            break;
+        }
+    }
+
+    return slotNum;
 }
 
 uint16_t
@@ -1458,29 +1530,36 @@ IM_getEntryInsertionIndex(
         RM_Page *page,
         uint16_t maxEntriesPerNode)
 {
-    uint16_t numTuples = page->header.numTuples;
+    return IM_getEntryIndexByPredicate(
+            keyValue,
+            page,
+            IM_GETENTRY_OP_GT,
+            maxEntriesPerNode,
+            NULL,
+            NULL);
+}
 
-    uint16_t maxSlots =
-            (numTuples < maxEntriesPerNode)
-            ? numTuples
-            : maxEntriesPerNode;
+bool
+IM_getEntryIndex(
+        const int32_t keyValue,
+        RM_Page *page,
+        uint16_t maxEntriesPerNode,
+        IM_ENTRY_FORMAT_T *entry_out_opt,
+        uint16_t *slotId_out_opt)
+{
+    uint16_t numSlots = 0;
+    uint16_t slotId = IM_getEntryIndexByPredicate(
+            keyValue,
+            page,
+            IM_GETENTRY_OP_EQ,
+            maxEntriesPerNode,
+            entry_out_opt,
+            &numSlots);
 
-    uint16_t slotNum = 0;
-    for (; slotNum < maxSlots; slotNum++) {
-        // get position of tuple
-        size_t slot = slotNum * sizeof(RM_PageSlotPtr);
-        RM_PageTuple *markTup = RM_Page_getTuple(page, slotNum, NULL);
-
-        // read in entry data
-        IM_ENTRY_FORMAT_T markEntry;
-        IM_readEntry_i32(markTup, &markEntry, sizeof(markEntry));
-
-        // stop if the current key is greater than or equal to the search
-        int32_t markKey = BF_AS_I32(markEntry.idxEntryKey);
-        if (markKey > keyValue) {
-            break;
-        }
+    if (slotId_out_opt != NULL) {
+        *slotId_out_opt = numSlots;
     }
 
-    return slotNum;
+    return slotId < numSlots;
 }
+

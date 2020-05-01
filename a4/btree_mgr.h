@@ -65,8 +65,4 @@ extern RC closeTreeScan (BT_ScanHandle *handle);
 // debug and test functions
 extern char *printTree (BTreeHandle *tree);
 
-//helper functions
-extern Node *getLeafNodePtr (BTreeHandle *tree, Value *key);
-extern RC binarySearchNode(Node *node, Value *key, RID *result);
-
 #endif // BTREE_MGR_H

@@ -229,11 +229,55 @@ RC binarySearchNode(Node *node, Value *key, RID *result){
 }
 
 // index access
-RC findKey (BTreeHandle *tree, Value *key, RID *result){
-    //get datatype from header info
-    //navigate tree and return RID with search key (Value *key) or RC_IM_KEY_NOT_FOUND
-    Node *leaf = getLeafNodePtr(tree, key);
-    RC rc = binarySearchNode(leaf, key, result);
+RC findKey (BTreeHandle *tree, Value *key, RID *result)
+{
+    PANIC_IF_NULL(tree);
+    PANIC_IF_NULL(key);
+
+    if (key->dt != tree->keyType) {
+        return RC_IM_KEY_DATA_TYPE_MISMATCH;
+    }
+
+    if (tree->keyType != DT_INT) {
+        return RC_IM_KEY_DATA_TYPE_UNSUPPORTED;
+    }
+
+    RC rc;
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
+    const uint16_t maxEntriesPerNode = indexMeta->maxEntriesPerNode;
+
+    int32_t keyValue = key->v.intV;
+    RM_PageNumber leafPageNum = IM_getLeafNode(
+            pool,
+            indexMeta->rootNodePageNum,
+            keyValue,
+            maxEntriesPerNode,
+            NULL,
+            NULL);
+
+    BM_PageHandle leafPageHandle;
+    TRY_OR_RETURN(pinPage(pool, &leafPageHandle, leafPageNum));
+    RM_Page *leafPage = (RM_Page *) leafPageHandle.buffer;
+
+    IM_ENTRY_FORMAT_T entry;
+    bool found = IM_getEntryIndex(
+            keyValue,
+            leafPage,
+            maxEntriesPerNode,
+            &entry,
+            NULL);
+
+    if (!found) {
+        rc = RC_IM_KEY_NOT_FOUND;
+        goto finally;
+    }
+
+    result->page = BF_AS_U16(entry.idxEntryRidPage);
+    result->slot = BF_AS_U16(entry.idxEntryRidSlot);
+
+finally:
+    TRY_OR_RETURN(unpinPage(pool, &leafPageHandle));
     return rc;
 }
 

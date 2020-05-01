@@ -40,8 +40,8 @@ IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out,
-        IM_NodeTrace **trace_out);
+        RM_PageNumber *parent_out_opt,
+        IM_NodeTrace **trace_out_opt);
 
 RC
 IM_writeIndexPage(BM_BufferPool *pool);
@@ -60,3 +60,11 @@ IM_findIndex(
         BM_PageHandle *page_out,
         RM_PageTuple **tup_out,
         struct IM_DESCRIPTOR_FORMAT_T *msg_out);
+
+bool
+IM_getEntryIndex(
+        int32_t keyValue,
+        RM_Page *page,
+        uint16_t maxEntriesPerNode,
+        IM_ENTRY_FORMAT_T *entry_out_opt,
+        uint16_t *slotId_out_opt);
