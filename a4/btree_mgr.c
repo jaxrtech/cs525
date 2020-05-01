@@ -173,8 +173,8 @@ RC openBtree (BTreeHandle **tree, char *idxId)
 
 RC closeBtree (BTreeHandle *tree)
 {
+    free(tree->mgmtData);
     free(tree);
-    // TODO: Free any mgmt data
 
     return RC_OK;
 }
