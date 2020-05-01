@@ -203,8 +203,14 @@ RC getNumNodes (BTreeHandle *tree, int *result){
 RC getNumEntries (BTreeHandle *tree, int *result){
 	NOT_IMPLEMENTED();
 }
-RC getKeyType (BTreeHandle *tree, DataType *result){
-	NOT_IMPLEMENTED();
+
+RC getKeyType (BTreeHandle *tree, DataType *result)
+{
+	PANIC_IF_NULL(tree);
+	PANIC_IF_NULL(result);
+
+	*result = tree->keyType;
+	return RC_OK;
 }
 
 //look for leaf node that MIGHT contain a key
