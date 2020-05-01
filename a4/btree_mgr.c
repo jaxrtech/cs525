@@ -30,11 +30,31 @@ static uint16_t IM_getEntryInsertionIndex(
         RM_Page *page,
         uint16_t maxEntriesPerNode);
 
+#define IM_NODETRACE_INITIAL_CAPACITY (16)
+
+typedef struct IM_NodeTrace {
+    RID *entryArr;
+    uint16_t entryLen;
+    uint16_t entryCapacity;
+} IM_NodeTrace;
+
+void IM_NodeTrace_append(IM_NodeTrace *self, RID val)
+{
+    if (self->entryLen == self->entryCapacity) {
+        self->entryCapacity = self->entryCapacity << 1u; // next power of 2
+        self->entryArr = realloc(self->entryArr, self->entryCapacity);
+    }
+
+    self->entryArr[self->entryLen] = val;
+    self->entryLen++;
+}
+
 static RM_PageNumber IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out);
+        RM_PageNumber *parent_out,
+        IM_NodeTrace **trace_out);
 
 // called by record manager -- do not mark as `static`
 RC IM_writeIndexPage(BM_BufferPool *pool)
@@ -182,10 +202,7 @@ RC createBtree (char *idxId, DataType keyType, int n)
 void IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result, size_t n)
 {
     if (tup == NULL) { PANIC("'tup' cannot be null"); }
-    if (tup->len == 0) {
-        PANIC("length of 'tup' buffer cannot be zero");
-    }
-
+    if (tup->len == 0) { PANIC("length of 'tup' buffer cannot be zero"); }
     if (result == NULL) { PANIC("'result' cannot be null"); }
     if (n == 0) { PANIC("'size' must be greater than zero bytes"); }
 
@@ -215,6 +232,8 @@ void IM_writeEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *entry, size_t n)
             (BF_MessageElement *) entry,
             &tup->dataBegin,
             BF_NUM_ELEMENTS(n));
+
+    if (wrote == 0) { PANIC("failed to write entry"); }
     if (wrote > tup->len) {
         PANIC("buffer overrun: attempted to write %d bytes, but buffer was %d bytes",
               wrote,
@@ -430,7 +449,7 @@ typedef struct IM_SplitLeafNodeCtx {
     RM_PageSlotId targetSlot;
 } IM_SplitLeafNodeCtx;
 
-RC IM_insertAndSplitLeafNode(
+RC IM_insertSplit_byAllocLeftRight(
         RM_Page *oldPage,
         int32_t keyValue,
         IM_ENTRY_FORMAT_T *entry,
@@ -462,7 +481,7 @@ RC IM_insertAndSplitLeafNode(
 
     // Initialize pages
     RM_Page *leftPage = RM_Page_init(leftPageHandle.buffer, leftPageNum, RM_PAGE_KIND_INDEX);
-    RM_Page *rightPage = RM_Page_init(rightPageHandle.buffer, leftPageNum, RM_PAGE_KIND_INDEX);
+    RM_Page *rightPage = RM_Page_init(rightPageHandle.buffer, rightPageNum, RM_PAGE_KIND_INDEX);
 
     // Unset leaf flag from the old now inner node
     UNSET_FLAG(oldPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
@@ -554,20 +573,225 @@ RC IM_insertAndSplitLeafNode(
         }
     }
 
+    // Clear all nodes on the old page and reset flags
+    RM_page_deleteAllTuples(oldPage);
+
     TRY_OR_RETURN(forcePage(pool, &leftPageHandle));
     TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
 
     TRY_OR_RETURN(unpinPage(pool, &leftPageHandle));
     TRY_OR_RETURN(unpinPage(pool, &rightPageHandle));
 
+    bool isTargetLeft = targetSlotIdx < numLeftFill;
+    if (ctx_out != NULL) {
+        ctx_out->leftPageNum = leftPageNum;
+        ctx_out->rightPageNum = rightPageNum;
+        ctx_out->isTargetLeft = isTargetLeft;
+        ctx_out->targetSlot =
+                isTargetLeft
+                ? targetSlotIdx
+                : targetSlotIdx - numLeftFill;
+    }
+
+    return RC_OK;
+}
+
+RC IM_insertSplit_byReuseLeftAllocRight(
+        RM_Page *oldPage,
+        int32_t keyValue,
+        IM_ENTRY_FORMAT_T *entry,
+        uint16_t entryDescriptorSize,
+        BM_BufferPool *pool,
+        uint16_t maxEntriesPerNode,
+        IM_SplitLeafNodeCtx *ctx_out)
+{
+    if (maxEntriesPerNode == 0) { NOT_IMPLEMENTED(); }
+
+    if (entryDescriptorSize % sizeof(BF_MessageElement) != 0) {
+        PANIC("expected 'entrySize' to be a multiple of 'sizeof(BF_MessageElement)`. "
+              "make sure that you using the in-memory 'sizeof(entry)' NOT 'BF_recomputeSize()'");
+    }
+
+    BP_Metadata *meta = pool->mgmtData;
+    RM_PageHeader *pageHeader = &oldPage->header;
+    const uint16_t initialNumEntries = pageHeader->numTuples;
+
+    const RM_PageSlotLength entryPhysSize = BF_recomputePhysicalSize(
+            (BF_MessageElement *) entry,
+            BF_NUM_ELEMENTS(entryDescriptorSize));
+
+    if (entryPhysSize == 0) {
+        PANIC("expected 'entryPhysSize' to be > 0");
+    }
+
+    // Determine the index at which the entry would normally be inserted
+    uint16_t targetSlotIdx = IM_getEntryInsertionIndex(keyValue, oldPage, maxEntriesPerNode);
+
+    // Allocate a new node for the *right* leaf
+    // We will reuse the old page as the *left* leaf node since then we can
+    // avoid messing with a previous sibling leaf node's next pointer.
+    int leftPageNum = oldPage->header.pageNum;
+    int rightPageNum = meta->fileHandle->totalNumPages;
+
+    BM_PageHandle rightPageHandle = {};
+    TRY_OR_RETURN(pinPage(pool, &rightPageHandle, rightPageNum));
+
+    // Set the *left* leaf page to the old page
+    // Initialize new *right* leaf page
+    RM_Page *leftPage = oldPage;
+    RM_Page *rightPage = RM_Page_init(rightPageHandle.buffer, rightPageNum, RM_PAGE_KIND_INDEX);
+
+    // Set indexing flags
+    SET_FLAG(leftPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
+    SET_FLAG(rightPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
+
+    // Link the left node to the right node, and the right node to the original next
+    RM_PageNumber oldPageNext = oldPage->header.nextPageNum;
+    leftPage->header.nextPageNum = rightPageNum;
+    rightPage->header.nextPageNum = oldPageNext;
+
+    // Check if the max number of entries is even.
+    // If so, the left node gets the extra entry.
+    uint16_t numRightFill;
+    bool isMaxEven = maxEntriesPerNode % 2 == 0;
+    if (isMaxEven) {
+        // ex: if the max == 4, but N = 5, then 3 nodes left, 2 node right
+        numRightFill = maxEntriesPerNode / 2;
+    } else {
+        // ex: if the max == 5, but N = 6, then 3 nodes left, 3 nodes right
+        numRightFill = (maxEntriesPerNode + 1) / 2;
+    }
+
+    uint16_t numLeftFill = (oldPage->header.numTuples + 1) - numRightFill;
+    uint16_t firstRightAbsSlotId = numLeftFill;
+    uint16_t lastAbsSlotId = oldPage->header.numTuples;
+    bool isTargetLeft = targetSlotIdx < numLeftFill;
+
+    //
+    // We're going to work backwards so that we don't override data.
+    // Hence we first will need to move over anything that belongs in the
+    // *new* right node.
+    //
+
+    //
+    // Write out the right node
+    //
+
+    uint16_t i;
+    uint16_t off = isTargetLeft ? 1 : 0;
+    for (i = firstRightAbsSlotId; i <= lastAbsSlotId; i++) {
+        if (isTargetLeft && i == targetSlotIdx) { PANIC("invalid state"); }
+
+        RM_PageTuple *oldTup = NULL;
+        uint16_t len;
+        if (i == targetSlotIdx) {
+            // If we hit the position at which we would insert the target,
+            // use the entry length
+            len = entryPhysSize;
+        }
+        else {
+            // Otherwise, get the old tuple length
+            oldTup = RM_Page_getTuple(oldPage, i + off, NULL);
+            len = oldTup->len;
+        }
+
+        RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(rightPage, len);
+
+        if (i == targetSlotIdx) {
+            // Copy the insertion entry into the current tuple
+            IM_writeEntry_i32(newTup, entry, entryDescriptorSize);
+
+            // Don't forget to increment the offset for the next iteration
+            off++;
+        }
+        else {
+            // Copy the old tuple to the new *right* tuple
+            //
+            // NOTE: Since we're writing into the new *right* node
+            // left-to-right, we can be sure that we are not overwriting any
+            // tuples
+            memcpy(&newTup->dataBegin, &oldTup->dataBegin, len);
+        }
+    }
+
+    //
+    // Adjust the old *left* node
+    //
+
+    off = 0; // reset the offset
+    if (targetSlotIdx == numLeftFill - 1) {
+        // We're inserting the target node in the last position in the left node
+        // In this case, we just need to overwrite the last entry
+        RM_PageTuple *tup = RM_Page_getTuple(oldPage, targetSlotIdx, NULL);
+        IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
+    }
+    else if (targetSlotIdx < numLeftFill - 1) {
+        // We're inserting the target node before the last element in the
+        // new *left* node. We're going to have to shift the slot pointers in
+        // the left node over by one to the right.
+
+        // Delete the last element first to prevent an overflow at insert time
+        RM_Page_deleteTuple(oldPage, numLeftFill - 1);
+
+        // Insert the tuple, by shifting the rest of the entries over after it
+        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, entryPhysSize, targetSlotIdx);
+        IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
+    }
+
+    TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &rightPageHandle));
+
     if (ctx_out != NULL) {
         ctx_out->leftPageNum = leftPageNum;
         ctx_out->rightPageNum = rightPageNum;
         ctx_out->isTargetLeft = targetSlotIdx < numLeftFill;
-        ctx_out->targetSlot = targetSlotIdx % numLeftFill;
+        ctx_out->targetSlot =
+                isTargetLeft
+                ? targetSlotIdx
+                : targetSlotIdx - numLeftFill;
     }
 
     return RC_OK;
+}
+
+typedef uint8_t IM_InsertSplitMode;
+#define IM_INSERTSPLITMODE_REUSE_LEFT_ALLOC_RIGHT (1)
+#define IM_INSERTSPLITMODE_ALLOC_LEFT_RIGHT (2)
+
+RC IM_insertSplit(
+        IM_InsertSplitMode mode,
+        RM_Page *oldPage,
+        int32_t keyValue,
+        IM_ENTRY_FORMAT_T *entry,
+        uint16_t entryDescriptorSize,
+        BM_BufferPool *pool,
+        uint16_t maxEntriesPerNode,
+        IM_SplitLeafNodeCtx *ctx_out)
+{
+    switch (mode) {
+        case IM_INSERTSPLITMODE_ALLOC_LEFT_RIGHT:
+            return IM_insertSplit_byAllocLeftRight(
+                    oldPage,
+                    keyValue,
+                    entry,
+                    entryDescriptorSize,
+                    pool,
+                    maxEntriesPerNode,
+                    ctx_out);
+
+        case IM_INSERTSPLITMODE_REUSE_LEFT_ALLOC_RIGHT:
+            return IM_insertSplit_byReuseLeftAllocRight(
+                    oldPage,
+                    keyValue,
+                    entry,
+                    entryDescriptorSize,
+                    pool,
+                    maxEntriesPerNode,
+                    ctx_out);
+
+        default:
+            PANIC("invalid 'mode'");
+    }
 }
 
 RC insertKey (BTreeHandle *tree, Value *key, RID rid){
@@ -605,18 +829,20 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
     const uint16_t maxEntriesPerNode = indexMeta->maxEntriesPerNode;
 
     // Find the leaf node where we need to insert the entry
+    IM_NodeTrace *parents = NULL;
     RM_PageNumber parentPageNum;
     RM_PageNumber leafNodePageNum = IM_getLeafNode(
             rootPageNum,
             keyValue,
             maxEntriesPerNode,
-            &parentPageNum);
+            &parentPageNum,
+            &parents);
 
     // Calculate initial number of entries in the leaf node
     BM_PageHandle leafNodePageHandle = {};
     TRY_OR_RETURN(pinPage(pool, &leafNodePageHandle, leafNodePageNum));
-    RM_Page *leafNodePage = (RM_Page *) leafNodePageHandle.buffer;
-    uint16_t initialNumEntries = leafNodePage->header.numTuples;
+    RM_Page *oldLeafNodePage = (RM_Page *) leafNodePageHandle.buffer;
+    uint16_t initialNumEntries = oldLeafNodePage->header.numTuples;
 
     // HACK: We're going to assume that `maxEntriesPerNode` is <= max number of tuples
     //       that can fit in a page
@@ -625,20 +851,18 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
         RM_PageTuple *targetTup = NULL;
         if (initialNumEntries == 0) {
             // Just reserve a new tuple since the node is empty (must be a new root node)
-            targetTup = RM_Page_reserveTupleAtEnd(leafNodePage, entryDiskSize);
+            targetTup = RM_Page_reserveTupleAtEnd(oldLeafNodePage, entryDiskSize);
         }
         else { // if (initialNumEntries > 0)
             // Determine where we need to insert the entry (using linear search)
-            uint16_t slotNum = IM_getEntryInsertionIndex(keyValue, leafNodePage, maxEntriesPerNode);
+            uint16_t slotNum = IM_getEntryInsertionIndex(keyValue, oldLeafNodePage, maxEntriesPerNode);
             targetTup = RM_reserveTupleAtIndex(
-                    leafNodePage,
+                    oldLeafNodePage,
                     entryDiskSize,
                     slotNum);
         }
 
-        BF_write((BF_MessageElement *) &entry,
-                 (void *) &targetTup->dataBegin,
-                 BF_NUM_ELEMENTS(sizeof(entry)));
+        IM_writeEntry_i32(targetTup, &entry, sizeof(entry));
 
         TRY_OR_RETURN(forcePage(pool, &leafNodePageHandle));
         TRY_OR_RETURN(unpinPage(pool, &leafNodePageHandle));
@@ -652,23 +876,33 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
     // and copy the leaf entries into two separate nodes
     //
 
+    // EDGE CASE: if we're splitting the root node as a leaf node,
+    // we need to allocate the new left and right leaf nodes so that we can keep
+    // the existing root node as a new inner node
+    RC rc;
     IM_SplitLeafNodeCtx leafSplit = {};
-    RC rc = IM_insertAndSplitLeafNode(
-            leafNodePage,
+    IM_InsertSplitMode insertMode;
+    if (IS_FLAG_SET(oldLeafNodePage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT)) {
+        insertMode = IM_INSERTSPLITMODE_ALLOC_LEFT_RIGHT;
+    } else {
+        insertMode = IM_INSERTSPLITMODE_REUSE_LEFT_ALLOC_RIGHT;
+    }
+
+    rc = IM_insertSplit(
+            insertMode,
+            oldLeafNodePage,
             keyValue,
             &entry,
             sizeof(entry),
             pool,
             maxEntriesPerNode,
             &leafSplit);
+
     if (rc != RC_OK) { PANIC("failed to split node: got rc = %d", rc); }
 
     // We then will need to link:
     //  * the new root entry pointer to the left node
     //  * the next page pointer to the right node
-
-    // Clear all nodes on the old page and reset flags
-    RM_page_deleteAllTuples(leafNodePage);
 
     // Get the key value of the first element in the right node
     RID rightPageFirstEntryRid = {
@@ -762,7 +996,15 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid){
         return RC_OK;
     }
 
-    // Parent inner node is full, we're going to need to split it and perform an inner node split
+    // Parent inner node is full, we're going to need to split it and perform
+    // an inner node split
+    //
+    // (ex)
+    //  [1,3,4,5]  ==>   |* 4|*| ~ (inserted into parent)
+    //    n = 3          /     \
+    //  / / /  \      [1,3]   [5]  (inner nodes)
+    //
+
     NOT_IMPLEMENTED();
 
     return RC_OK;
@@ -772,7 +1014,8 @@ static RM_PageNumber IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out)
+        RM_PageNumber *parent_out,
+        IM_NodeTrace **trace_out)
 {
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
 
@@ -782,16 +1025,27 @@ static RM_PageNumber IM_getLeafNode(
     BM_PageHandle nodeHandle = {};
     RM_Page *node = NULL;
 
-    if (pinPage(pool, &nodeHandle, rootPageNum) != RC_OK) {
-        PANIC("failed to get node page '%d'", rootPageNum);
+    IM_NodeTrace *trace = NULL;
+    if (trace_out != NULL) {
+        trace = malloc(sizeof(IM_NodeTrace));
+        trace->entryLen = 0;
+        trace->entryCapacity = IM_NODETRACE_INITIAL_CAPACITY;
+        trace->entryArr = calloc(IM_NODETRACE_INITIAL_CAPACITY, sizeof(*trace->entryArr));
     }
 
-    node = (RM_Page *) nodeHandle.buffer;
-    if (node->header.kind != RM_PAGE_KIND_INDEX) {
-        PANIC("attempted to read from wrong page kind. expected index page.");
-    }
-
+    RM_PageNumber nodePageNum = rootPageNum;
     do {
+        // Pin the next node page
+        if (pinPage(pool, &nodeHandle, nodePageNum) != RC_OK) {
+            PANIC("failed to get node page '%d'", nodePageNum);
+        }
+        node = (RM_Page *) nodeHandle.buffer;
+
+        // Ensure that we are reading from a index page
+        if (node->header.kind != RM_PAGE_KIND_INDEX) {
+            PANIC("attempted to read from wrong page kind. expected index page.");
+        }
+
         // If the node is still a leaf node, then we don't have to go any further
         if (IS_FLAG_SET(node->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
             break;
@@ -803,27 +1057,40 @@ static RM_PageNumber IM_getLeafNode(
         // Find the index that is less than or equal to the search key
         //
         uint16_t slotId = IM_getEntryInsertionIndex(searchKey, node, maxEntriesPerNode);
-        
-        // Check if this is >= numTuples, if so, we need to use the page.header->nextPageNum
-        // pointer as the right-most pointer on the node to get the pageNum
-        RM_PageNumber nextPageNum;
+
+        // If tracing is enabled, append to the list
+        if (trace != NULL) {
+            RID nodeRid = {.page = nodePageNum, .slot = slotId};
+            IM_NodeTrace_append(trace, nodeRid);
+        }
+
+        //
+        // Determine the next page number
+        //
+
+        // Check if the slot index == numTuples,
+        //   if so, we need to use the `page.header->nextPageNum` pointer as the
+        //   right-most pointer on the node to get the next page
+        //
         uint16_t nodeNumTuples = node->header.numTuples;
         if (slotId == nodeNumTuples) {
-            nextPageNum = node->header.nextPageNum;
-        } else if (slotId < nodeNumTuples) {
+            nodePageNum = node->header.nextPageNum;
+        }
+        else if (slotId < nodeNumTuples) {
             // Traverse to the newly selected node
             RM_PageTuple *nextTup = RM_Page_getTuple(node, slotId, NULL);
 
             // Determine where the next page is located
             IM_ENTRY_FORMAT_T entry;
             IM_readEntry_i32(nextTup, &entry, sizeof(entry));
-            nextPageNum = BF_AS_U16(entry.idxEntryRidPage);
-        } else {
+            nodePageNum = BF_AS_U16(entry.idxEntryRidPage);
+        }
+        else {
             PANIC("bad 'slotId' value. expected to be <= number of tuples in node");
-            nextPageNum = -1;  // stop static analyzer from complaining
+            nodePageNum = -1;  // stop static analyzer from complaining
         }
 
-        if (nextPageNum == (RM_PageNumber) -1) {
+        if (nodePageNum == (RM_PageNumber) -1) {
             PANIC("bad 'nextPageNum'. got -1.");
         }
 
@@ -840,13 +1107,11 @@ static RM_PageNumber IM_getLeafNode(
         parentNode = node;
         parentNodeHandle = nodeHandle;
 
-        // Pin the next node page
-        if (pinPage(pool, &nodeHandle, nextPageNum) != RC_OK) {
-            PANIC("failed to get node page '%d'", nextPageNum);
-        }
-        node = (RM_Page *) nodeHandle.buffer;
-
     } while (true);
+
+    if (unpinPage(pool, &nodeHandle) != RC_OK) {
+        PANIC("failed to unpin node page");
+    }
 
     if (parent_out != NULL) {
         if (parentNode != NULL) {
@@ -860,9 +1125,8 @@ static RM_PageNumber IM_getLeafNode(
         }
     }
 
-    RM_PageNumber nodePageNum = node->header.pageNum;
-    if (unpinPage(pool, &nodeHandle) != RC_OK) {
-        PANIC("failed to unpin node page");
+    if (trace_out != NULL) {
+        *trace_out = trace;
     }
 
     return nodePageNum;

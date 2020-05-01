@@ -48,7 +48,7 @@ testInsertAndFind (void)
     {1,2},
     {3,5},
     {4,4},
-    {3,2}, 
+    {3,2},
   };
   int numInserts = 6;
   Value **keys;
@@ -74,7 +74,7 @@ testInsertAndFind (void)
   // insert keys
   for(i = 0; i < numInserts; i++){
     TEST_CHECK(insertKey(tree, keys[i], insert[i]));
-    printf("TEST INSERT %d\n", i);
+    printf("TEST INSERT [%d] = '%s'\n", i, stringKeys[i]);
     fflush(stdout);
   }
 
