@@ -86,10 +86,7 @@ RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len) {
 }
 
 RM_PageTuple *
-RM_reserveTupleAtIndex(
-        RM_Page *page,
-        const uint16_t len,
-        uint16_t slotNum)
+RM_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
 {
     const uint16_t initialNumEntries = page->header.numTuples;
 
@@ -128,6 +125,13 @@ RM_Page_getTuple(
         RM_PageSlotId slotIdx,
         RM_PageSlotPtr **ptr_out)
 {
+    PANIC_IF_NULL(self);
+    const uint16_t numTuples = self->header.numTuples;
+    if (slotIdx >= numTuples) {
+        PANIC("'slotIdx' was out of bounds. got slot id = %d, but num tuples = %d",
+                slotIdx, numTuples);
+    }
+    
     size_t slot = slotIdx * sizeof(RM_PageSlotPtr);
     RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slot);
     RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);

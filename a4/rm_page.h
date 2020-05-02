@@ -106,7 +106,7 @@ typedef struct PACKED_STRUCT RM_PageTuple {
 
 RM_Page *RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind);
 RM_PageTuple *RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len);
-RM_PageTuple *RM_reserveTupleAtIndex(RM_Page *page, uint16_t len, uint16_t slotNum);
+RM_PageTuple *RM_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len);
 
 RM_PageTuple *RM_Page_getTuple(
         RM_Page *self,

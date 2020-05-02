@@ -24,7 +24,7 @@ const IM_ENTRY_FORMAT_T IM_ENTRY_FORMAT_OF_I32 = {
                 .name = "idx_entry_key",
                 .type = BF_INT32,
         },
-        .idxEntryRidPage = {
+        .idxEntryRidPageNum = {
                 .name = "idx_entry_rid_page",
                 .type = BF_UINT16,
         },

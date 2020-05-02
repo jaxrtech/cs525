@@ -195,6 +195,9 @@ RC markDirty (BM_BufferPool *const bm, BM_PageHandle *const page){
 }
 
 RC unpinPage (BM_BufferPool *const bm, BM_PageHandle *const page) {
+    PANIC_IF_NULL(bm);
+    PANIC_IF_NULL(page);
+
 	BP_Metadata *meta = bm->mgmtData;
     BM_LinkedListElement *el = NULL;
     if (!resolveByHandle(bm, page, &el)) {

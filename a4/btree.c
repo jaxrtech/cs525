@@ -46,10 +46,12 @@ void IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result, size_t n)
             (BF_MessageElement *) result,
             &tup->dataBegin,
             BF_NUM_ELEMENTS(n));
+
+    if (read == 0) { PANIC("read failed"); }
     if (read > tup->len) {
         PANIC("buffer overrun: got %d bytes, but buffer is %d bytes",
-              read,
-              tup->len);
+                read,
+                tup->len);
     }
 }
 
@@ -73,10 +75,7 @@ void IM_writeEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *entry, size_t n)
     }
 }
 
-RC IM_readEntryAt_i32(
-        BM_BufferPool *pool,
-        RID rid,
-        IM_ENTRY_FORMAT_T *entry_out)
+RC IM_readEntryAt_i32(BM_BufferPool *pool, RID rid, IM_ENTRY_FORMAT_T *entry_out)
 {
     PANIC_IF_NULL(entry_out);
 
@@ -121,7 +120,7 @@ void IM_makeEntry_i32(
 
     *entry = IM_ENTRY_FORMAT_OF_I32;
     BF_SET_I32(entry->idxEntryKey) = key;
-    BF_SET_U16(entry->idxEntryRidPage) = rid.page;
+    BF_SET_U16(entry->idxEntryRidPageNum) = rid.page;
     BF_SET_U16(entry->idxEntryRidSlot) = rid.slot;
 }
 
@@ -485,7 +484,7 @@ RC IM_insertSplit_byReuseLeftAllocRight(
         RM_Page_deleteTuple(oldPage, numLeftFill - 1);
 
         // Insert the tuple, by shifting the rest of the entries over after it
-        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, entryPhysSize, targetSlotIdx);
+        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
         IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
     }
 
@@ -681,7 +680,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
     }
 
     // Set the left node's end pointer to the yanked entry's pointer
-    leftPage->header.nextPageNum = BF_AS_U16(yankedEntry.idxEntryRidPage);
+    leftPage->header.nextPageNum = BF_AS_U16(yankedEntry.idxEntryRidPageNum);
 
     // Clear all nodes on the old page and reset storage flags
     RM_page_deleteAllTuples(oldPage);
@@ -883,7 +882,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
         RM_Page_deleteTuple(oldPage, numLeftFill - 1);
 
         // Insert the tuple, by shifting the rest of the entries over after it
-        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, entryPhysSize, targetSlotIdx);
+        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
         IM_writeEntry_i32(tup, insertEntry, sizeof(entryDescriptorSize));
     }
     
@@ -895,7 +894,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
     }
 
     // Set the left node's end pointer to the yanked entry's pointer
-    leftPage->header.nextPageNum = BF_AS_U16(yankedEntry.idxEntryRidPage);
+    leftPage->header.nextPageNum = BF_AS_U16(yankedEntry.idxEntryRidPageNum);
 
     TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
     TRY_OR_RETURN(unpinPage(pool, &rightPageHandle));
@@ -1045,8 +1044,8 @@ RC IM_insertLinkKey_i32(
             // Insert the link at the current location as a tuple
             RM_PageTuple *linkTup = RM_reserveTupleAtIndex(
                     parentPage,
-                    linkEntryPhysSize,
-                    slotId);
+                    slotId,
+                    linkEntryPhysSize);
 
             // Write out the link tuple
             IM_writeEntry_i32(linkTup, &linkEntry, sizeof(linkEntry));
@@ -1058,7 +1057,7 @@ RC IM_insertLinkKey_i32(
             IM_ENTRY_FORMAT_T nextEntry;
             IM_readEntryAt_i32(pool, nextTupRid, &nextEntry);
 
-            BF_SET_U16(nextEntry.idxEntryRidPage) = rightNodePageNum;
+            BF_SET_U16(nextEntry.idxEntryRidPageNum) = rightNodePageNum;
             BF_SET_U16(nextEntry.idxEntryRidSlot) = 0;
 
             IM_writeEntryAt_i32(pool, nextTupRid, &nextEntry);
@@ -1105,6 +1104,8 @@ RC IM_insertKey_i32(
 {
     PANIC_IF_NULL(pool);
     PANIC_IF_NULL(indexMeta);
+
+    RC rc;
 
     //
     // Create the entry node for usage later
@@ -1155,16 +1156,14 @@ RC IM_insertKey_i32(
             uint16_t slotNum = IM_getEntryInsertionIndex(keyValue, oldLeafNodePage, maxEntriesPerNode);
             targetTup = RM_reserveTupleAtIndex(
                     oldLeafNodePage,
-                    entryDiskSize,
-                    slotNum);
+                    slotNum,
+                    entryDiskSize);
         }
 
         IM_writeEntry_i32(targetTup, &entry, sizeof(entry));
 
-        TRY_OR_RETURN(forcePage(pool, &leafNodePageHandle));
-        TRY_OR_RETURN(unpinPage(pool, &leafNodePageHandle));
-
-        return RC_OK;
+        rc = RC_OK;
+        goto finally;
     }
 
     // We don't have enough space and will need to split the leaf node
@@ -1176,7 +1175,6 @@ RC IM_insertKey_i32(
     // EDGE CASE: if we're splitting the root node as a leaf node,
     // we need to allocate the new left and right leaf nodes so that we can keep
     // the existing root node as a new inner node
-    RC rc;
     IM_SplitLeafNodeCtx leafSplit = {};
     IM_InsertSplitMode insertMode;
     if (IS_FLAG_SET(oldLeafNodePage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT)) {
@@ -1223,8 +1221,8 @@ RC IM_insertKey_i32(
             &linkEntry));
     
     if (didInsertLinkKey) {
-        // TODO: Are we forgetting to release resources?
-        return RC_OK;
+        rc = RC_OK;
+        goto finally;
     }
 
     BM_PageHandle parentPageHandle = {};
@@ -1276,7 +1274,6 @@ RC IM_insertKey_i32(
                 BF_NUM_ELEMENTS(sizeof(parentYankedEntry)));
 
         // Attempt to insert the yanked entry into the parent's parent
-
         RM_PageNumber grantParentPageNum;
         if (traceParentIdx == 0) {
             // The parent node is already the root node
@@ -1310,8 +1307,8 @@ RC IM_insertKey_i32(
         TRY_OR_RETURN(unpinPage(pool, &parentPageHandle));
 
         if (didInsertParentLinkKey) {
-            // TODO: Are we forgetting to release other resources?
-            return RC_OK;
+            rc = RC_OK;
+            goto finally;
         }
         else {
             if (traceParentIdx == 0) {
@@ -1326,6 +1323,11 @@ RC IM_insertKey_i32(
     } while (true);
 
     PANIC("should never be reached");
+
+finally:
+    TRY_OR_RETURN(forcePage(pool, &leafNodePageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &leafNodePageHandle));
+    return rc;
 }
 
 RM_PageNumber
@@ -1403,7 +1405,7 @@ IM_getLeafNode(
             // Determine where the next page is located
             IM_ENTRY_FORMAT_T entry;
             IM_readEntry_i32(nextTup, &entry, sizeof(entry));
-            nodePageNum = BF_AS_U16(entry.idxEntryRidPage);
+            nodePageNum = BF_AS_U16(entry.idxEntryRidPageNum);
         }
         else {
             PANIC("bad 'slotId' value. expected to be <= number of tuples in node");

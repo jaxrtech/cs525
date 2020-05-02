@@ -197,9 +197,116 @@ RC deleteBtree (char *idxId){
 }
 
 // access information about a b-tree
-RC getNumNodes (BTreeHandle *tree, int *result){
-	NOT_IMPLEMENTED();
+typedef struct IM_GetNumNodes_Elem {
+    RM_PageNumber pageNum;
+    RM_PageSlotId nextSlotId;
+} IM_GetNumNodes_Elem;
+
+RC getNumNodes (BTreeHandle *tree, int *result)
+{
+    PANIC_IF_NULL(tree);
+    PANIC_IF_NULL(result);
+
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    IM_IndexMetadata *indexMeta = tree->mgmtData;
+    RM_PageNumber rootPageNum = indexMeta->rootNodePageNum;
+
+    
+    // Allocate a stack to push parent nodes when we need to traverse it's
+    // children
+    uint32_t stackCapacity = 16;
+    uint32_t stackLen = 0;
+    IM_GetNumNodes_Elem *stack = calloc(stackCapacity, sizeof(*stack));
+
+    int numNodes = 1;
+
+    RM_PageNumber curPageNum = rootPageNum;
+    BM_PageHandle curPageHandle;
+    RM_PageSlotId nextSlotId = 0;
+    do {
+        TRY_OR_RETURN(pinPage(pool, &curPageHandle, curPageNum));
+        RM_Page *curPage = (RM_Page *) curPageHandle.buffer;
+
+        bool isCurPageRoot = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT);
+        bool isCurPageLeaf = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
+
+        if (isCurPageRoot && isCurPageLeaf) {
+            // There is only one node
+            break;
+        }
+
+        if (isCurPageLeaf) {
+            PANIC("expected inner node but got leaf node");
+        }
+
+        // Current node is an inner node
+        //
+        // Determine if this inner node has other inner node children
+        // or if it only has leaf nodes as children, since if it's only
+        // leaf nodes, we can just use the `numTuples`
+
+        RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
+        IM_ENTRY_FORMAT_T entry;
+        IM_readEntry_i32(tup, &entry, sizeof(entry));
+
+        RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
+        BM_PageHandle slotPageHandle;
+        TRY_OR_RETURN(pinPage(pool, &slotPageHandle, slotPageNum));
+        RM_Page *slotPage = (RM_Page *) slotPageHandle.buffer;
+
+        if (slotPage->header.kind != RM_PAGE_KIND_INDEX) {
+            PANIC("expected page referenced by slot of non-leaf node "
+                  "to be an index page");
+        }
+
+        if (IS_FLAG_SET(slotPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
+            // The rest of the slots should be leaf nodes, therefore we can
+            // just count the slots on this inner node
+            // Add +1 for the nextPage pointer
+            numNodes += curPage->header.numTuples + 1;
+
+            // Attempt to pop the parent to read the rest of the parent inner slots
+            bool finished = false;
+            if (stackLen > 0) {
+                IM_GetNumNodes_Elem *el = &stack[stackLen - 1];
+                curPageNum = el->pageNum;
+                nextSlotId = el->nextSlotId;
+            } else {
+                finished = true;
+            }
+
+            TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+            if (finished) {
+                break;
+            }
+
+            continue;
+        }
+
+        // If the first slot is not a leaf, then this inner node must have inner
+        // node children. We need to traverse through each slot then.
+        //
+        // Push the current node to be the parent node and increment the next
+        // slot id.
+        if (stackLen == stackCapacity) {
+            stackCapacity = stackCapacity << 1u;
+            stack = realloc(stack, stackCapacity);
+        }
+        stack[stackLen].pageNum = curPageNum;
+        stack[stackLen].nextSlotId = nextSlotId + 1;
+        stackLen++;
+
+        // Traverse the first inner node
+        curPageNum = slotPageNum;
+        nextSlotId = 0;
+        TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+
+    } while (true);
+
+    *result = numNodes;
+    return RC_OK;
 }
+
 RC getNumEntries (BTreeHandle *tree, int *result){
 	NOT_IMPLEMENTED();
 }
@@ -273,7 +380,7 @@ RC findKey (BTreeHandle *tree, Value *key, RID *result)
         goto finally;
     }
 
-    result->page = BF_AS_U16(entry.idxEntryRidPage);
+    result->page = BF_AS_U16(entry.idxEntryRidPageNum);
     result->slot = BF_AS_U16(entry.idxEntryRidSlot);
 
 finally:

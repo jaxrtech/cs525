@@ -12,7 +12,7 @@ typedef struct PACKED_STRUCT IM_DESCRIPTOR_FORMAT_T {
 
 typedef struct PACKED_STRUCT IM_ENTRY_FORMAT_T {
     BF_MessageElement idxEntryKey;
-    BF_MessageElement idxEntryRidPage;
+    BF_MessageElement idxEntryRidPageNum;
     BF_MessageElement idxEntryRidSlot;
 } IM_ENTRY_FORMAT_T;
 

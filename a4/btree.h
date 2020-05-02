@@ -68,3 +68,15 @@ IM_getEntryIndex(
         uint16_t maxEntriesPerNode,
         IM_ENTRY_FORMAT_T *entry_out_opt,
         uint16_t *slotId_out_opt);
+
+void
+IM_readEntry_i32(
+        RM_PageTuple *tup,
+        IM_ENTRY_FORMAT_T *result,
+        size_t n);
+
+RC
+IM_readEntryAt_i32(
+        BM_BufferPool *pool,
+        RID rid,
+        IM_ENTRY_FORMAT_T *entry_out);
