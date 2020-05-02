@@ -72,7 +72,7 @@ typedef struct PACKED_STRUCT RM_PageHeader {
 
 } RM_PageHeader;
 
-#define RM_PAGE_NEXT_PAGENUM_UNSET   ((int32_t) -1)
+#define RM_PAGE_NEXT_PAGENUM_UNSET   ((uint16_t) -1)
 #define RM_PAGE_NEXT_PAGENUM_INVALID ((int32_t) INT32_MIN)
 #define RM_PAGE_DATA_SIZE (PAGE_SIZE - sizeof(RM_PageHeader))
 

@@ -210,7 +210,6 @@ RC getNumNodes (BTreeHandle *tree, int *result)
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
     IM_IndexMetadata *indexMeta = tree->mgmtData;
     RM_PageNumber rootPageNum = indexMeta->rootNodePageNum;
-
     
     // Allocate a stack to push parent nodes when we need to traverse it's
     // children
@@ -307,8 +306,47 @@ RC getNumNodes (BTreeHandle *tree, int *result)
     return RC_OK;
 }
 
-RC getNumEntries (BTreeHandle *tree, int *result){
-	NOT_IMPLEMENTED();
+RC getNumEntries (BTreeHandle *tree, int *result)
+{
+	PANIC_IF_NULL(tree);
+	PANIC_IF_NULL(result);
+
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    IM_IndexMetadata *indexMeta = tree->mgmtData;
+    RM_PageNumber rootPageNum = indexMeta->rootNodePageNum;
+
+    // Find the left most leaf node
+    RM_PageNumber startLeafNode = IM_getLeafNode(
+            pool,
+            rootPageNum,
+            INT32_MIN,
+            indexMeta->maxEntriesPerNode,
+            NULL,
+            NULL);
+
+    // Count all the tuples
+    int totalNumTuples = 0;
+
+    RM_PageNumber pageNum = startLeafNode;
+    BM_PageHandle pageHandle;
+    bool done = false;
+    do {
+        TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNum));
+        RM_Page *page = (RM_Page *) pageHandle.buffer;
+
+        totalNumTuples += page->header.numTuples;
+        if (page->header.nextPageNum == RM_PAGE_NEXT_PAGENUM_UNSET) {
+            done = true;
+        } else {
+            pageNum = page->header.nextPageNum;
+        }
+
+        TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+
+    } while (!done);
+
+    *result = totalNumTuples;
+    return RC_OK;
 }
 
 RC getKeyType (BTreeHandle *tree, DataType *result)
@@ -382,6 +420,7 @@ RC findKey (BTreeHandle *tree, Value *key, RID *result)
 
     result->page = BF_AS_U16(entry.idxEntryRidPageNum);
     result->slot = BF_AS_U16(entry.idxEntryRidSlot);
+    rc = RC_OK;
 
 finally:
     TRY_OR_RETURN(unpinPage(pool, &leafPageHandle));
