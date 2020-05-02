@@ -32,7 +32,7 @@ typedef struct Node {
 
 typedef struct BT_ScanData {
 	RM_PageNumber currentNodePageNum; //store the current leaf node
-	int nodeIdx;	   //stores the last index in the node checked.
+	int currentSlotId;	   //stores the last index in the node checked.
 } BT_ScanData;
 
 typedef struct BT_ScanHandle {

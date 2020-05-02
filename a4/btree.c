@@ -103,6 +103,28 @@ RC IM_readEntryAt_i32(BM_BufferPool *pool, RID rid, IM_ENTRY_FORMAT_T *entry_out
     return RC_OK;
 }
 
+RC IM_readEntryValueAt(BM_BufferPool *pool, RID entryIndex, RID *entryValue_out)
+{
+    PANIC_IF_NULL(entryValue_out);
+
+    BM_PageHandle pageHandle = {};
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, entryIndex.page));
+    RM_Page *page = (RM_Page *) pageHandle.buffer;
+
+    RM_PageTuple *tup = RM_Page_getTuple(page, entryIndex.slot, NULL);
+    IM_ENTRY_FORMAT_T entry;
+    IM_readEntry_i32(tup, &entry);
+
+    RID result = {
+            .page = BF_AS_U16(entry.idxEntryRidPageNum),
+            .slot = BF_AS_U16(entry.idxEntryRidSlot)};
+
+    *entryValue_out = result;
+
+    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+    return RC_OK;
+}
+
 RC IM_writeEntryAt_i32(
         BM_BufferPool *pool,
         RID rid,

@@ -118,3 +118,8 @@ IM_deleteKey_i32(
         BM_BufferPool *pool,
         IM_IndexMetadata *indexMeta,
         int32_t keyValue);
+
+RC IM_readEntryValueAt(
+        BM_BufferPool *pool,
+        RID entryIndex,
+        RID *entryValue_out);

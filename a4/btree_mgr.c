@@ -348,7 +348,7 @@ RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle)
 
     BT_ScanData *scandata = malloc(sizeof (BT_ScanData));
     scandata->currentNodePageNum = leafPageNum;
-    scandata->nodeIdx = 0;
+    scandata->currentSlotId = 0;
 
     BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
     h->tree = tree;
@@ -361,7 +361,7 @@ RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle)
 RC nextEntry (BT_ScanHandle *handle, RID *result){
     //loads current node and stores the RID pointer in result
     BT_ScanData *sd = handle->mgmtData;
-    int idx = sd->nodeIdx;
+    int idx = sd->currentSlotId;
     /* * load current node and current index
 	   * store resultant RID in result
        * check if idx < fill
@@ -370,7 +370,24 @@ RC nextEntry (BT_ScanHandle *handle, RID *result){
                 *** if NULL, RC_IM_NO_MORE_ENTRIES
                 *** else, sd->nodeIdx = 0; curren node = last ptr of prev node.
     */
-    NOT_IMPLEMENTED();
+
+    BT_ScanData *scandata = (BT_ScanData *) handle->mgmtData;
+
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    RID entryIndex = {.page = scandata->currentNodePageNum, .slot = scandata->currentSlotId};
+
+    RID entryResult;
+    IM_readEntryValueAt(pool, entryIndex, &entryResult);
+
+    *result = entryResult;
+    scandata->currentSlotId++;
+
+    uint16_t numTuples;
+    TRY_OR_RETURN(RM_Page_getNumTuplesAt(pool, scandata->currentNodePageNum, &numTuples));
+    if (scandata->currentSlotId >= numTuples) {
+        // TODO
+        NOT_IMPLEMENTED();
+    }
 
     return RC_OK;
 }
