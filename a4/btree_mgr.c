@@ -327,17 +327,33 @@ RC deleteKey (BTreeHandle *tree, Value *key)
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
     IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
 
-    IM_deleteKey_i32(pool, indexMeta, keyValue);
+    return IM_deleteKey_i32(pool, indexMeta, keyValue);
 }
 
-RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle){
-    BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
-	h->tree = tree;
+RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle)
+{
+    PANIC_IF_NULL(tree);
+    PANIC_IF_NULL(handle);
+
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
+
+    RM_PageNumber leafPageNum = IM_getLeafNode(
+            pool,
+            indexMeta->rootNodePageNum,
+            INT32_MIN,
+            indexMeta->maxEntriesPerNode,
+            NULL,
+            NULL);
 
     BT_ScanData *scandata = malloc(sizeof (BT_ScanData));
-    scandata->currentNode = getLeafNodePtr(tree, NULL); //get leftmost leaf node
+    scandata->currentNodePageNum = leafPageNum;
     scandata->nodeIdx = 0;
-    (*handle)->mgmtData = scandata;
+
+    BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
+    h->tree = tree;
+    h->mgmtData = scandata;
+    *handle = h;
 
     return RC_OK;
 }

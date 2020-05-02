@@ -48,18 +48,17 @@ RC IM_writeIndexPage(BM_BufferPool *pool)
     return RC_OK;
 }
 
-void IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result, size_t n)
+void IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result)
 {
     PANIC_IF_NULL(tup);
     PANIC_IF_NULL(result);
     if (tup->len == 0) { PANIC("length of 'tup' buffer cannot be zero"); }
-    if (n == 0) { PANIC("'size' must be greater than zero bytes"); }
 
     memcpy(result, &IM_ENTRY_FORMAT_OF_I32, sizeof(IM_ENTRY_FORMAT_OF_I32));
     uint16_t read = BF_read(
             (BF_MessageElement *) result,
             &tup->dataBegin,
-            BF_NUM_ELEMENTS(n));
+            BF_NUM_ELEMENTS(sizeof(*result)));
 
     if (read == 0) { PANIC("read failed"); }
     if (read > tup->len) {
@@ -69,19 +68,19 @@ void IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result, size_t n)
     }
 }
 
-void IM_writeEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *entry, size_t n)
+void IM_writeEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *entry)
 {
     PANIC_IF_NULL(tup);
     PANIC_IF_NULL(entry);
     if (tup->len == 0) { PANIC("length of 'tup' buffer cannot be zero"); }
-    if (n == 0) { PANIC("'size' must be greater than zero bytes"); }
 
     uint16_t wrote = BF_write(
             (BF_MessageElement *) entry,
             &tup->dataBegin,
-            BF_NUM_ELEMENTS(n));
+            BF_NUM_ELEMENTS(sizeof(*entry)));
 
-    if (wrote == 0) { PANIC("failed to write entry"); }
+    if (wrote == 0) {
+        PANIC("failed to write entry"); }
     if (wrote > tup->len) {
         PANIC("buffer overrun: attempted to write %d bytes, but buffer was %d bytes",
               wrote,
@@ -98,7 +97,7 @@ RC IM_readEntryAt_i32(BM_BufferPool *pool, RID rid, IM_ENTRY_FORMAT_T *entry_out
     RM_Page *page = (RM_Page *) pageHandle.buffer;
 
     RM_PageTuple *tup = RM_Page_getTuple(page, rid.slot, NULL);
-    IM_readEntry_i32(tup, entry_out, sizeof(IM_ENTRY_FORMAT_T));
+    IM_readEntry_i32(tup, entry_out);
 
     TRY_OR_RETURN(unpinPage(pool, &pageHandle));
     return RC_OK;
@@ -116,7 +115,7 @@ RC IM_writeEntryAt_i32(
     RM_Page *page = (RM_Page *) pageHandle.buffer;
 
     RM_PageTuple *tup = RM_Page_getTuple(page, rid.slot, NULL);
-    IM_writeEntry_i32(tup, entry_out, sizeof(IM_ENTRY_FORMAT_T));
+    IM_writeEntry_i32(tup, entry_out);
 
     TRY_OR_RETURN(markDirty(pool, &pageHandle));
     TRY_OR_RETURN(unpinPage(pool, &pageHandle));
@@ -468,7 +467,7 @@ RC IM_insertSplit_byReuseLeftAllocRight(
 
         if (i == targetSlotIdx) {
             // Copy the insertion entry into the current tuple
-            IM_writeEntry_i32(newTup, entry, entryDescriptorSize);
+            IM_writeEntry_i32(newTup, entry);
 
             // Decrement the page shift by one since we didn't read from the
             // old page
@@ -493,7 +492,7 @@ RC IM_insertSplit_byReuseLeftAllocRight(
         // We're inserting the target node in the last position in the left node
         // In this case, we just need to overwrite the last entry
         RM_PageTuple *tup = RM_Page_getTuple(oldPage, targetSlotIdx, NULL);
-        IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
+        IM_writeEntry_i32(tup, entry);
     }
     else if (targetSlotIdx < numLeftFill - 1) {
         // We're inserting the target node before the last element in the
@@ -505,7 +504,7 @@ RC IM_insertSplit_byReuseLeftAllocRight(
 
         // Insert the tuple, by shifting the rest of the entries over after it
         RM_PageTuple *tup = RM_Page_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
-        IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
+        IM_writeEntry_i32(tup, entry);
     }
 
     TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
@@ -614,7 +613,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
             // Write out new entry
             RM_PageSlotLength len = insertEntryDescriptorSize;
             RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(leftPage, len);
-            IM_writeEntry_i32(newTup, insertEntry, insertEntryDescriptorSize);
+            IM_writeEntry_i32(newTup, insertEntry);
         }
         else if (i == targetSlotIdx && i == pulledAbsIdx) {
             // The node that we're trying to insert is also the node that
@@ -640,7 +639,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
             // Copy old entry to the pulled entry
             RM_PageTuple *oldTup = RM_Page_getTuple(oldPage, i + oldPageOff, NULL);
             RM_PageSlotLength len = oldTup->len;
-            IM_readEntry_i32(oldTup, &yankedEntry, sizeof(yankedEntry));
+            IM_readEntry_i32(oldTup, &yankedEntry);
         }
         else {
             PANIC("should never be reached");
@@ -654,7 +653,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
             // Write out new entry
             RM_PageSlotLength len = insertEntryDescriptorSize;
             RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(rightPage, len);
-            IM_writeEntry_i32(newTup, insertEntry, insertEntryDescriptorSize);
+            IM_writeEntry_i32(newTup, insertEntry);
         }
         else if (i == targetSlotIdx && i == pulledAbsIdx) {
             // The node that we're trying to insert is also the node that
@@ -682,7 +681,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
             // Copy old entry to the pulled entry
             RM_PageTuple *oldTup = RM_Page_getTuple(oldPage, i + oldPageOff, NULL);
             RM_PageSlotLength len = oldTup->len;
-            IM_readEntry_i32(oldTup, &yankedEntry, sizeof(yankedEntry));
+            IM_readEntry_i32(oldTup, &yankedEntry);
 
             // We don't need to mess with any indexing since the next call
             // to `reserveTupleAtEnd` will simple write to the next location
@@ -839,7 +838,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
         else if (i != targetSlotIdx && i == pulledAbsIdx) {
             // We are yanking this entry from the old page
             RM_PageTuple *tup = RM_Page_getTuple(oldPage, i + oldPageOff, NULL);
-            IM_readEntry_i32(tup, &yankedEntry, sizeof(yankedEntry));
+            IM_readEntry_i32(tup, &yankedEntry);
 
             // Skip writing this entry
             continue;
@@ -866,7 +865,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
 
         if (i == targetSlotIdx) {
             // Copy the insertion entry into the current tuple
-            IM_writeEntry_i32(newTup, insertEntry, entryDescriptorSize);
+            IM_writeEntry_i32(newTup, insertEntry);
 
             // Decrement the page shift by one since we didn't read from the
             // old page
@@ -891,7 +890,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
         // We're inserting the target node in the last position in the left node
         // In this case, we just need to overwrite the last entry
         RM_PageTuple *tup = RM_Page_getTuple(oldPage, targetSlotIdx, NULL);
-        IM_writeEntry_i32(tup, insertEntry, sizeof(entryDescriptorSize));
+        IM_writeEntry_i32(tup, insertEntry);
     }
     else if (targetSlotIdx < numLeftFill - 1) {
         // We're inserting the target node before the last element in the
@@ -903,7 +902,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
 
         // Insert the tuple, by shifting the rest of the entries over after it
         RM_PageTuple *tup = RM_Page_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
-        IM_writeEntry_i32(tup, insertEntry, sizeof(entryDescriptorSize));
+        IM_writeEntry_i32(tup, insertEntry);
     }
     
     // The yanked entry should be set by now (since it should always get chosen
@@ -1068,7 +1067,7 @@ RC IM_insertLinkKey_i32(
                     linkEntryPhysSize);
 
             // Write out the link tuple
-            IM_writeEntry_i32(linkTup, &linkEntry, sizeof(linkEntry));
+            IM_writeEntry_i32(linkTup, &linkEntry);
 
             // Update the pointer of the next entry to the right node
             uint16_t nextSlotId = slotId + 1;
@@ -1093,7 +1092,7 @@ RC IM_insertLinkKey_i32(
                     linkEntryPhysSize);
 
             // Write out the link tuple
-            IM_writeEntry_i32(linkTup, &linkEntry, sizeof(linkEntry));
+            IM_writeEntry_i32(linkTup, &linkEntry);
 
             // Set the next page num to what we wanted to insert
             // in the first place. If the node was not initialized, then we just
@@ -1182,7 +1181,7 @@ RC IM_insertKey_i32(
                     entryDiskSize);
         }
 
-        IM_writeEntry_i32(targetTup, &entry, sizeof(entry));
+        IM_writeEntry_i32(targetTup, &entry);
 
         rc = RC_OK;
         goto finally;
@@ -1433,7 +1432,7 @@ IM_getLeafNode(
 
             // Determine where the next page is located
             IM_ENTRY_FORMAT_T entry;
-            IM_readEntry_i32(nextTup, &entry, sizeof(entry));
+            IM_readEntry_i32(nextTup, &entry);
             nodePageNum = BF_AS_U16(entry.idxEntryRidPageNum);
         }
         else {
@@ -1532,7 +1531,7 @@ IM_getEntryIndexByPredicate(
         RM_PageTuple *markTup = RM_Page_getTuple(page, slotNum, NULL);
 
         // read in entry data
-        IM_readEntry_i32(markTup, &markEntry, sizeof(markEntry));
+        IM_readEntry_i32(markTup, &markEntry);
 
         // stop if predicate matches
         int32_t markKey = BF_AS_I32(markEntry.idxEntryKey);
@@ -1754,7 +1753,7 @@ RC IM_deleteKey_i32(
         RM_PageSlotId nextSiblingSlotId = entryIndexRid.slot + 1;
         IM_ENTRY_FORMAT_T nextSiblingEntry;
         RM_PageTuple *nextSiblingTup = RM_Page_getTuple(leafPage, nextSiblingSlotId, NULL);
-        IM_readEntry_i32(nextSiblingTup, &nextSiblingEntry, sizeof(nextSiblingEntry));
+        IM_readEntry_i32(nextSiblingTup, &nextSiblingEntry);
 
         RID parentLinkEntryRid = {.page = parentLinkRid.page, .slot = 0};
         IM_ENTRY_FORMAT_T parentLinkEntry;
@@ -1832,7 +1831,7 @@ RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
 
         RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
         IM_ENTRY_FORMAT_T entry;
-        IM_readEntry_i32(tup, &entry, sizeof(entry));
+        IM_readEntry_i32(tup, &entry);
 
         RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
         BM_PageHandle slotPageHandle;
@@ -1858,7 +1857,7 @@ RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
             for (; nextSlotId < numTuples; nextSlotId++) {
                 RM_PageTuple *leafNodeTup = RM_Page_getTuple(curPage, nextSlotId, NULL);
                 IM_ENTRY_FORMAT_T leafNodeEntry;
-                IM_readEntry_i32(leafNodeTup, &leafNodeEntry, sizeof(leafNodeEntry));
+                IM_readEntry_i32(leafNodeTup, &leafNodeEntry);
 
                 RM_PageNumber leafNodePageNum = BF_AS_U16(leafNodeEntry.idxEntryRidPageNum);
                 RM_Page_freeAt(pool, leafNodePageNum);
@@ -1955,7 +1954,7 @@ RC IM_getNumNodes(
 
         RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
         IM_ENTRY_FORMAT_T entry;
-        IM_readEntry_i32(tup, &entry, sizeof(entry));
+        IM_readEntry_i32(tup, &entry);
 
         RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
         BM_PageHandle slotPageHandle;

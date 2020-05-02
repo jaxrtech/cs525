@@ -79,10 +79,7 @@ IM_getEntryIndex(
         uint16_t *slotId_out_opt);
 
 void
-IM_readEntry_i32(
-        RM_PageTuple *tup,
-        IM_ENTRY_FORMAT_T *result,
-        size_t n);
+IM_readEntry_i32(RM_PageTuple *tup, IM_ENTRY_FORMAT_T *result);
 
 RC
 IM_readEntryAt_i32(

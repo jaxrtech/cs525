@@ -9,6 +9,7 @@
 #include "dberror.h"
 #include "tables.h"
 #include "buffer_mgr.h"
+#include "rm_page.h"
 
 //define type flags for internal and leaf nodes
 #define LEAF_NODE 0
@@ -30,7 +31,7 @@ typedef struct Node {
 } Node;
 
 typedef struct BT_ScanData {
-	Node *currentNode; //store the current leaf node
+	RM_PageNumber currentNodePageNum; //store the current leaf node
 	int nodeIdx;	   //stores the last index in the node checked.
 } BT_ScanData;
 

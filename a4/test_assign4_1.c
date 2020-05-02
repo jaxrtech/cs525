@@ -31,8 +31,8 @@ main (void)
   testName = "";
 
   destroyPageFile("storage.db");
-  testInsertAndFind();
-  testDelete();
+//  testInsertAndFind();
+//  testDelete();
   testIndexScan();
 
   return 0;
