@@ -327,55 +327,7 @@ RC deleteKey (BTreeHandle *tree, Value *key)
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
     IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
 
-    RID entryIndexRid;
-    RID parentRid;
-    TRY_OR_RETURN(IM_findEntry_i32(
-            pool,
-            indexMeta,
-            keyValue,
-            NULL,
-            &entryIndexRid,
-            &parentRid));
-
-    BM_PageHandle pageHandle;
-    TRY_OR_RETURN(pinPage(pool, &pageHandle, entryIndexRid.page));
-    RM_Page *page = (RM_Page *) pageHandle.buffer;
-
-    //
-    // Determine if there will still be items in the leaf node once the entry
-    // is removed (i.e. check for underflow)
-    //
-    uint16_t initialLeafNumTuples = page->header.numTuples;
-    if (initialLeafNumTuples == 0) {
-        PANIC("expected number of leaf tuples to be greater than 0");
-    }
-
-    if (initialLeafNumTuples == 1) {
-        // TODO: Handle underflow
-        NOT_IMPLEMENTED();
-    }
-
-    // Check if the item that is being removed is the first entry
-    // If so, we have to update the parent node's entry value to the next
-    // sibling's value
-    if (entryIndexRid.slot == 0) {
-        RM_PageSlotId nextSiblingSlotId = entryIndexRid.slot + 1;
-        IM_ENTRY_FORMAT_T nextSiblingEntry;
-        RM_PageTuple *nextSiblingTup = RM_Page_getTuple(page, nextSiblingSlotId, NULL);
-        IM_readEntry_i32(nextSiblingTup, &nextSiblingEntry, sizeof(nextSiblingEntry));
-
-        RID parentLinkEntryRid = {.page = parentRid.page, .slot = 0};
-        IM_ENTRY_FORMAT_T parentLinkEntry;
-        IM_readEntryAt_i32(pool, parentLinkEntryRid, &parentLinkEntry);
-
-        BF_SET_I32(parentLinkEntry.idxEntryKey) = BF_AS_I32(nextSiblingEntry.idxEntryKey);
-        IM_writeEntryAt_i32(pool, parentLinkEntryRid, &parentLinkEntry);
-    }
-
-    // Delete pointer, handling fixing-up the slot pointers
-    RM_Page_deleteTupleAtIndex(page, entryIndexRid.slot);
-
-    return RC_OK;
+    IM_deleteKey_i32(pool, indexMeta, keyValue);
 }
 
 RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle){

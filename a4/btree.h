@@ -115,3 +115,9 @@ IM_getNumNodes(
         BM_BufferPool *pool,
         IM_IndexMetadata *indexMeta,
         int *result_out);
+
+RC
+IM_deleteKey_i32(
+        BM_BufferPool *pool,
+        IM_IndexMetadata *indexMeta,
+        int32_t keyValue);

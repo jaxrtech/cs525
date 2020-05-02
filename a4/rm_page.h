@@ -120,3 +120,13 @@ void RM_Page_setTuple(RM_Page *self, Record *r);
 void RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId);
 void RM_Page_deleteAllTuples(RM_Page *self);
 void RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum);
+
+RC RM_Page_getNumTuplesAt(
+        BM_BufferPool *pool,
+        RM_PageNumber pageNumber,
+        uint16_t *numTuples_out);
+
+RC RM_Page_moveTuple(
+        BM_BufferPool *pool,
+        RID sourceEntryRid,
+        RID destEntryRid);

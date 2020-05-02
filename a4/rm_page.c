@@ -182,6 +182,26 @@ RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
     page->header.numTuples--;
 }
 
+RC
+RM_Page_getNumTuplesAt(
+        BM_BufferPool *pool,
+        RM_PageNumber pageNumber,
+        uint16_t *numTuples_out)
+{
+    PANIC_IF_NULL(numTuples_out);
+    uint16_t numTuples = 0;
+
+    BM_PageHandle pageHandle;
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNumber));
+    RM_Page *page = (RM_Page *) pageHandle.buffer;
+    numTuples = page->header.numTuples;
+
+    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+
+    *numTuples_out = numTuples;
+    return RC_OK;
+}
+
 RM_PageTuple *
 RM_Page_getTuple(
         RM_Page *self,
@@ -269,3 +289,38 @@ RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId) {
     self->header.numTuples--;
 }
 
+RC
+RM_Page_moveTuple(BM_BufferPool *pool, RID sourceEntryRid, RID destEntryRid)
+{
+    PANIC_IF_NULL(pool);
+
+    BM_PageHandle sourcePageHandle;
+    TRY_OR_RETURN(pinPage(pool, &sourcePageHandle, sourceEntryRid.page));
+    RM_Page *sourcePage = (RM_Page *) sourcePageHandle.buffer;
+
+    BM_PageHandle destPageHandle;
+    TRY_OR_RETURN(pinPage(pool, &destPageHandle, destEntryRid.page));
+    RM_Page *destPage = (RM_Page *) destPageHandle.buffer;
+
+    RM_PageTuple *borrowedTup = RM_Page_getTuple(
+            sourcePage,
+            sourceEntryRid.slot,
+            NULL);
+
+    RM_PageTuple *newTup = RM_Page_reserveTupleAtIndex(
+            destPage,
+            destEntryRid.slot,
+            borrowedTup->len);
+
+    memcpy(&newTup->dataBegin, &borrowedTup->dataBegin, borrowedTup->len);
+
+    // Remove the borrowed tuple from the original page
+    RM_Page_deleteTuple(sourcePage, sourceEntryRid.slot);
+
+    TRY_OR_RETURN(markDirty(pool, &destPageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &destPageHandle));
+
+    TRY_OR_RETURN(markDirty(pool, &sourcePageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &sourcePageHandle));
+    return RC_OK;
+}
