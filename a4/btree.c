@@ -1732,11 +1732,14 @@ RC IM_deleteKey_i32(
                 int32_t leftSiblingEntryKeyValue = BF_AS_I32(leftSiblingEntry.idxEntryKey);
 
                 // Determine where the correct position for the borrowed tuple
+                /*
                 IM_getEntryInsertionIndex(
                         leftSiblingEntryKeyValue,
                         leftSib
                         )
                 RM_Page_moveTuple(pool, )
+                */
+                NOT_IMPLEMENTED();
 
                 rc = RC_OK;
                 goto finally;
