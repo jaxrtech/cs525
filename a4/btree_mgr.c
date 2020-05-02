@@ -26,7 +26,10 @@ RC initIndexManager(void *mgmtData IGNORE_UNUSED)
         return RC_OK;
     }
 
-    g_instance = malloc(sizeof(RM_Metadata));
+    if (g_instance == NULL) {
+        g_instance = malloc(sizeof(RM_Metadata));
+    }
+
     if (g_instance == NULL) {
         PANIC("malloc: failed to allocate index manager metadata");
     }
@@ -57,6 +60,7 @@ RC shutdownIndexManager()
 {
 	if (g_instance != NULL) {
 	    free(g_instance);
+	    g_instance = NULL;
 	}
 
 	return RC_OK;
@@ -163,9 +167,8 @@ RC openBtree (BTreeHandle **tree, char *idxId)
     indexHandle->keyType = BF_AS_U8(indexMsg.idxKeyType);
 
     IM_IndexMetadata *meta = malloc(sizeof(IM_IndexMetadata));
+    IM_IndexMetadata_makeFromMessage(meta, &indexMsg);
     indexHandle->mgmtData = meta;
-    meta->rootNodePageNum = BF_AS_U16(indexMsg.idxRootNodePageNum);
-    meta->maxEntriesPerNode = BF_AS_U16(indexMsg.idxMaxEntriesPerNode);
 
     *tree = indexHandle;
     return RC_OK;
@@ -179,29 +182,15 @@ RC closeBtree (BTreeHandle *tree)
     return RC_OK;
 }
 
-RC deleteBtree (char *idxId){
-    //i assume page 3 is a page where each tuple points to a btree. we iterate through and delete the tree.
-	NOT_IMPLEMENTED();
-
+RC deleteBtree(char *idxId)
+{
+    PANIC_IF_NULL(idxId);
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
-    BM_PageHandle handle;
 
-    TRY_OR_RETURN(pinPage(pool, &handle, RM_PAGE_KIND_INDEX)); //pin page containing btrees
-    RM_Page *page = (RM_Page *) handle.buffer;
-
-    //TODO: delete tuple Here
-
-    TRY_OR_RETURN(markDirty(pool, &handle));
-    TRY_OR_RETURN(unpinPage(pool, &handle));
-    return RC_OK;
+    return IM_deleteIndex(pool, idxId);
 }
 
 // access information about a b-tree
-typedef struct IM_GetNumNodes_Elem {
-    RM_PageNumber pageNum;
-    RM_PageSlotId nextSlotId;
-} IM_GetNumNodes_Elem;
-
 RC getNumNodes (BTreeHandle *tree, int *result)
 {
     PANIC_IF_NULL(tree);
@@ -209,101 +198,8 @@ RC getNumNodes (BTreeHandle *tree, int *result)
 
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
     IM_IndexMetadata *indexMeta = tree->mgmtData;
-    RM_PageNumber rootPageNum = indexMeta->rootNodePageNum;
-    
-    // Allocate a stack to push parent nodes when we need to traverse it's
-    // children
-    uint32_t stackCapacity = 16;
-    uint32_t stackLen = 0;
-    IM_GetNumNodes_Elem *stack = calloc(stackCapacity, sizeof(*stack));
 
-    int numNodes = 1;
-
-    RM_PageNumber curPageNum = rootPageNum;
-    BM_PageHandle curPageHandle;
-    RM_PageSlotId nextSlotId = 0;
-    do {
-        TRY_OR_RETURN(pinPage(pool, &curPageHandle, curPageNum));
-        RM_Page *curPage = (RM_Page *) curPageHandle.buffer;
-
-        bool isCurPageRoot = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT);
-        bool isCurPageLeaf = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
-
-        if (isCurPageRoot && isCurPageLeaf) {
-            // There is only one node
-            break;
-        }
-
-        if (isCurPageLeaf) {
-            PANIC("expected inner node but got leaf node");
-        }
-
-        // Current node is an inner node
-        //
-        // Determine if this inner node has other inner node children
-        // or if it only has leaf nodes as children, since if it's only
-        // leaf nodes, we can just use the `numTuples`
-
-        RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
-        IM_ENTRY_FORMAT_T entry;
-        IM_readEntry_i32(tup, &entry, sizeof(entry));
-
-        RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
-        BM_PageHandle slotPageHandle;
-        TRY_OR_RETURN(pinPage(pool, &slotPageHandle, slotPageNum));
-        RM_Page *slotPage = (RM_Page *) slotPageHandle.buffer;
-
-        if (slotPage->header.kind != RM_PAGE_KIND_INDEX) {
-            PANIC("expected page referenced by slot of non-leaf node "
-                  "to be an index page");
-        }
-
-        if (IS_FLAG_SET(slotPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
-            // The rest of the slots should be leaf nodes, therefore we can
-            // just count the slots on this inner node
-            // Add +1 for the nextPage pointer
-            numNodes += curPage->header.numTuples + 1;
-
-            // Attempt to pop the parent to read the rest of the parent inner slots
-            bool finished = false;
-            if (stackLen > 0) {
-                IM_GetNumNodes_Elem *el = &stack[stackLen - 1];
-                curPageNum = el->pageNum;
-                nextSlotId = el->nextSlotId;
-            } else {
-                finished = true;
-            }
-
-            TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
-            if (finished) {
-                break;
-            }
-
-            continue;
-        }
-
-        // If the first slot is not a leaf, then this inner node must have inner
-        // node children. We need to traverse through each slot then.
-        //
-        // Push the current node to be the parent node and increment the next
-        // slot id.
-        if (stackLen == stackCapacity) {
-            stackCapacity = stackCapacity << 1u;
-            stack = realloc(stack, stackCapacity);
-        }
-        stack[stackLen].pageNum = curPageNum;
-        stack[stackLen].nextSlotId = nextSlotId + 1;
-        stackLen++;
-
-        // Traverse the first inner node
-        curPageNum = slotPageNum;
-        nextSlotId = 0;
-        TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
-
-    } while (true);
-
-    *result = numNodes;
-    return RC_OK;
+    return IM_getNumNodes(pool, indexMeta, result);
 }
 
 RC getNumEntries (BTreeHandle *tree, int *result)
@@ -378,6 +274,7 @@ RC findKey (BTreeHandle *tree, Value *key, RID *result)
 {
     PANIC_IF_NULL(tree);
     PANIC_IF_NULL(key);
+    PANIC_IF_NULL(result);
 
     if (key->dt != tree->keyType) {
         return RC_IM_KEY_DATA_TYPE_MISMATCH;
@@ -387,44 +284,11 @@ RC findKey (BTreeHandle *tree, Value *key, RID *result)
         return RC_IM_KEY_DATA_TYPE_UNSUPPORTED;
     }
 
-    RC rc;
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
     IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
-    const uint16_t maxEntriesPerNode = indexMeta->maxEntriesPerNode;
-
     int32_t keyValue = key->v.intV;
-    RM_PageNumber leafPageNum = IM_getLeafNode(
-            pool,
-            indexMeta->rootNodePageNum,
-            keyValue,
-            maxEntriesPerNode,
-            NULL,
-            NULL);
 
-    BM_PageHandle leafPageHandle;
-    TRY_OR_RETURN(pinPage(pool, &leafPageHandle, leafPageNum));
-    RM_Page *leafPage = (RM_Page *) leafPageHandle.buffer;
-
-    IM_ENTRY_FORMAT_T entry;
-    bool found = IM_getEntryIndex(
-            keyValue,
-            leafPage,
-            maxEntriesPerNode,
-            &entry,
-            NULL);
-
-    if (!found) {
-        rc = RC_IM_KEY_NOT_FOUND;
-        goto finally;
-    }
-
-    result->page = BF_AS_U16(entry.idxEntryRidPageNum);
-    result->slot = BF_AS_U16(entry.idxEntryRidSlot);
-    rc = RC_OK;
-
-finally:
-    TRY_OR_RETURN(unpinPage(pool, &leafPageHandle));
-    return rc;
+    return IM_findEntry_i32(pool, indexMeta, keyValue, result, NULL, NULL);
 }
 
 RC insertKey (BTreeHandle *tree, Value *key, RID rid)
@@ -446,10 +310,74 @@ RC insertKey (BTreeHandle *tree, Value *key, RID rid)
     return IM_insertKey_i32(pool, indexMeta, key->v.intV, rid);
 }
 
-RC deleteKey (BTreeHandle *tree, Value *key){
-    //delete key and record pointer from tree and rebalance or RC_IM_KEY_NOT_FOUND
-    NOT_IMPLEMENTED();
+RC deleteKey (BTreeHandle *tree, Value *key)
+{
+    PANIC_IF_NULL(tree);
+    PANIC_IF_NULL(key);
+
+    if (key->dt != tree->keyType) {
+        return RC_IM_KEY_DATA_TYPE_MISMATCH;
+    }
+
+    if (tree->keyType != DT_INT) {
+        return RC_IM_KEY_DATA_TYPE_UNSUPPORTED;
+    }
+
+    const int32_t keyValue = key->v.intV;
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    IM_IndexMetadata *indexMeta = (IM_IndexMetadata *) tree->mgmtData;
+
+    RID entryIndexRid;
+    RID parentRid;
+    TRY_OR_RETURN(IM_findEntry_i32(
+            pool,
+            indexMeta,
+            keyValue,
+            NULL,
+            &entryIndexRid,
+            &parentRid));
+
+    BM_PageHandle pageHandle;
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, entryIndexRid.page));
+    RM_Page *page = (RM_Page *) pageHandle.buffer;
+
+    //
+    // Determine if there will still be items in the leaf node once the entry
+    // is removed (i.e. check for underflow)
+    //
+    uint16_t initialLeafNumTuples = page->header.numTuples;
+    if (initialLeafNumTuples == 0) {
+        PANIC("expected number of leaf tuples to be greater than 0");
+    }
+
+    if (initialLeafNumTuples == 1) {
+        // TODO: Handle underflow
+        NOT_IMPLEMENTED();
+    }
+
+    // Check if the item that is being removed is the first entry
+    // If so, we have to update the parent node's entry value to the next
+    // sibling's value
+    if (entryIndexRid.slot == 0) {
+        RM_PageSlotId nextSiblingSlotId = entryIndexRid.slot + 1;
+        IM_ENTRY_FORMAT_T nextSiblingEntry;
+        RM_PageTuple *nextSiblingTup = RM_Page_getTuple(page, nextSiblingSlotId, NULL);
+        IM_readEntry_i32(nextSiblingTup, &nextSiblingEntry, sizeof(nextSiblingEntry));
+
+        RID parentLinkEntryRid = {.page = parentRid.page, .slot = 0};
+        IM_ENTRY_FORMAT_T parentLinkEntry;
+        IM_readEntryAt_i32(pool, parentLinkEntryRid, &parentLinkEntry);
+
+        BF_SET_I32(parentLinkEntry.idxEntryKey) = BF_AS_I32(nextSiblingEntry.idxEntryKey);
+        IM_writeEntryAt_i32(pool, parentLinkEntryRid, &parentLinkEntry);
+    }
+
+    // Delete pointer, handling fixing-up the slot pointers
+    RM_Page_deleteTupleAtIndex(page, entryIndexRid.slot);
+
+    return RC_OK;
 }
+
 RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle){
     BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
 	h->tree = tree;

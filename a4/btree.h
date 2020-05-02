@@ -10,6 +10,11 @@ typedef struct IM_IndexMetadata {
     uint16_t maxEntriesPerNode;
 } IM_IndexMetadata;
 
+typedef struct IM_GetNumNodes_Elem {
+    RM_PageNumber pageNum;
+    RM_PageSlotId nextSlotId;
+} IM_GetNumNodes_Elem;
+
 typedef struct IM_NodeTrace {
     RID *entryArr;
     uint16_t entryLen;
@@ -27,6 +32,10 @@ typedef uint8_t IM_InsertSplitMode;
 #define IM_INSERTSPLITMODE_REUSE_LEFT_ALLOC_RIGHT (1)
 #define IM_INSERTSPLITMODE_ALLOC_LEFT_RIGHT (2)
 
+void
+IM_IndexMetadata_makeFromMessage(
+        IM_IndexMetadata *meta,
+        IM_DESCRIPTOR_FORMAT_T *indexMsg);
 
 uint16_t
 IM_getEntryInsertionIndex(
@@ -40,7 +49,7 @@ IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out_opt,
+        RID *parent_out_opt,
         IM_NodeTrace **trace_out_opt);
 
 RC
@@ -57,9 +66,9 @@ RC
 IM_findIndex(
         BM_BufferPool *pool,
         char *name,
-        BM_PageHandle *page_out,
-        RM_PageTuple **tup_out,
-        struct IM_DESCRIPTOR_FORMAT_T *msg_out);
+        BM_PageHandle *descriptor_page_out_opt,
+        RM_PageTuple **tup_out_opt,
+        struct IM_DESCRIPTOR_FORMAT_T *msg_out_opt);
 
 bool
 IM_getEntryIndex(
@@ -80,3 +89,29 @@ IM_readEntryAt_i32(
         BM_BufferPool *pool,
         RID rid,
         IM_ENTRY_FORMAT_T *entry_out);
+
+RC
+IM_findEntry_i32(
+        BM_BufferPool *pool,
+        IM_IndexMetadata *indexMeta,
+        int32_t keyValue,
+        RID *entryValue_out_opt,
+        RID *entryIndex_out_opt,
+        RID *parentPageNum_out_opt);
+
+RC
+IM_writeEntryAt_i32(
+        BM_BufferPool *pool,
+        RID rid,
+        IM_ENTRY_FORMAT_T *entry_out);
+
+RC
+IM_deleteIndex(
+        BM_BufferPool *pool,
+        char *idxId);
+
+RC
+IM_getNumNodes(
+        BM_BufferPool *pool,
+        IM_IndexMetadata *indexMeta,
+        int *result_out);

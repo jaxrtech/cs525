@@ -1,3 +1,6 @@
+#include "btree_mgr.h"
+#include "binfmt.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,6 +11,17 @@
 #include "rm_macros.h"
 #include "rm_page.h"
 #include "btree_binfmt.h"
+
+void IM_IndexMetadata_makeFromMessage(
+        IM_IndexMetadata *meta,
+        IM_DESCRIPTOR_FORMAT_T *indexMsg)
+{
+    PANIC_IF_NULL(meta);
+    PANIC_IF_NULL(indexMsg);
+
+    meta->rootNodePageNum = BF_AS_U16(indexMsg->idxRootNodePageNum);
+    meta->maxEntriesPerNode = BF_AS_U16(indexMsg->idxMaxEntriesPerNode);
+}
 
 void IM_NodeTrace_append(IM_NodeTrace *self, RID val)
 {
@@ -127,12 +141,15 @@ void IM_makeEntry_i32(
 RC IM_findIndex(
         BM_BufferPool *pool,
         char *name,
-        BM_PageHandle *page_out,
-        struct RM_PageTuple **tup_out,
-        struct IM_DESCRIPTOR_FORMAT_T *msg_out)
+        BM_PageHandle *descriptor_page_out_opt,
+        struct RM_PageTuple **tup_out_opt,
+        struct IM_DESCRIPTOR_FORMAT_T *msg_out_opt)
 {
     PANIC_IF_NULL(pool);
     PANIC_IF_NULL(name);
+    if (tup_out_opt != NULL && descriptor_page_out_opt == NULL) {
+        PANIC("cannot output tuple ptr if page handle ptr not provided");
+    }
 
     size_t nameLength = strlen(name);
 
@@ -182,16 +199,19 @@ RC IM_findIndex(
         return RC_IM_KEY_NOT_FOUND;
     }
 
-    if (page_out != NULL) {
-        *page_out = pageHandle;
+    if (tup_out_opt != NULL) {
+        *tup_out_opt = tup;
     }
 
-    if (tup_out != NULL) {
-        *tup_out = tup;
+    if (descriptor_page_out_opt != NULL) {
+        *descriptor_page_out_opt = pageHandle;
+    }
+    else {
+        TRY_OR_RETURN(unpinPage(pool, &pageHandle));
     }
 
-    if (msg_out != NULL) {
-        memcpy(msg_out, &indexMsg, sizeof(IM_DESCRIPTOR_FORMAT));
+    if (msg_out_opt != NULL) {
+        memcpy(msg_out_opt, &indexMsg, sizeof(IM_DESCRIPTOR_FORMAT));
     }
 
     return RC_OK;
@@ -323,7 +343,7 @@ RC IM_insertSplit_byAllocLeftRight(
     }
 
     // Clear all nodes on the old page and reset flags
-    RM_page_deleteAllTuples(oldPage);
+    RM_Page_deleteAllTuples(oldPage);
 
     TRY_OR_RETURN(forcePage(pool, &leftPageHandle));
     TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
@@ -484,7 +504,7 @@ RC IM_insertSplit_byReuseLeftAllocRight(
         RM_Page_deleteTuple(oldPage, numLeftFill - 1);
 
         // Insert the tuple, by shifting the rest of the entries over after it
-        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
+        RM_PageTuple *tup = RM_Page_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
         IM_writeEntry_i32(tup, entry, sizeof(entryDescriptorSize));
     }
 
@@ -683,7 +703,7 @@ RC IM_insertSplitInner_byAllocLeftRight(
     leftPage->header.nextPageNum = BF_AS_U16(yankedEntry.idxEntryRidPageNum);
 
     // Clear all nodes on the old page and reset storage flags
-    RM_page_deleteAllTuples(oldPage);
+    RM_Page_deleteAllTuples(oldPage);
 
     TRY_OR_RETURN(forcePage(pool, &leftPageHandle));
     TRY_OR_RETURN(forcePage(pool, &rightPageHandle));
@@ -882,7 +902,7 @@ RC IM_insertSplitInner_byReuseLeftAllocRight(
         RM_Page_deleteTuple(oldPage, numLeftFill - 1);
 
         // Insert the tuple, by shifting the rest of the entries over after it
-        RM_PageTuple *tup = RM_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
+        RM_PageTuple *tup = RM_Page_reserveTupleAtIndex(oldPage, targetSlotIdx, entryPhysSize);
         IM_writeEntry_i32(tup, insertEntry, sizeof(entryDescriptorSize));
     }
     
@@ -1042,7 +1062,7 @@ RC IM_insertLinkKey_i32(
         uint16_t slotId = IM_getEntryInsertionIndex(linkEntryKey, parentPage, maxEntriesPerNode);
         if (slotId < parentNumTuples) {
             // Insert the link at the current location as a tuple
-            RM_PageTuple *linkTup = RM_reserveTupleAtIndex(
+            RM_PageTuple *linkTup = RM_Page_reserveTupleAtIndex(
                     parentPage,
                     slotId,
                     linkEntryPhysSize);
@@ -1127,14 +1147,16 @@ RC IM_insertKey_i32(
 
     // Find the leaf node where we need to insert the entry
     IM_NodeTrace *parents = NULL;
-    RM_PageNumber parentPageNum;
+    RID parentRid;
     RM_PageNumber leafNodePageNum = IM_getLeafNode(
             pool,
             rootPageNum,
             keyValue,
             maxEntriesPerNode,
-            &parentPageNum,
+            &parentRid,
             &parents);
+
+    uint16_t parentPageNum = parentRid.page;
 
     // Calculate initial number of entries in the leaf node
     BM_PageHandle leafNodePageHandle = {};
@@ -1154,7 +1176,7 @@ RC IM_insertKey_i32(
         else { // if (initialNumEntries > 0)
             // Determine where we need to insert the entry (using linear search)
             uint16_t slotNum = IM_getEntryInsertionIndex(keyValue, oldLeafNodePage, maxEntriesPerNode);
-            targetTup = RM_reserveTupleAtIndex(
+            targetTup = RM_Page_reserveTupleAtIndex(
                     oldLeafNodePage,
                     slotNum,
                     entryDiskSize);
@@ -1336,7 +1358,7 @@ IM_getLeafNode(
         RM_PageNumber rootPageNum,
         int32_t searchKey,
         uint16_t maxEntriesPerNode,
-        RM_PageNumber *parent_out_opt,
+        RID *parent_out_opt,
         IM_NodeTrace **trace_out_opt)
 {
     PANIC_IF_NULL(pool);
@@ -1355,6 +1377,7 @@ IM_getLeafNode(
         trace->entryArr = calloc(IM_NODETRACE_INITIAL_CAPACITY, sizeof(*trace->entryArr));
     }
 
+    RID parentRid;
     RM_PageNumber nodePageNum = rootPageNum;
     do {
         // Pin the next node page
@@ -1370,6 +1393,10 @@ IM_getLeafNode(
 
         // If the node is still a leaf node, then we don't have to go any further
         if (IS_FLAG_SET(node->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
+            if (unpinPage(pool, &nodeHandle) != RC_OK) {
+                PANIC("failed to unpin node page");
+            }
+
             break;
         }
 
@@ -1381,9 +1408,11 @@ IM_getLeafNode(
         uint16_t slotId = IM_getEntryInsertionIndex(searchKey, node, maxEntriesPerNode);
 
         // If tracing is enabled, append to the list
+        parentRid.page = nodePageNum;
+        parentRid.slot = slotId;
+
         if (trace != NULL) {
-            RID nodeRid = {.page = nodePageNum, .slot = slotId};
-            IM_NodeTrace_append(trace, nodeRid);
+            IM_NodeTrace_append(trace, parentRid);
         }
 
         //
@@ -1431,19 +1460,13 @@ IM_getLeafNode(
 
     } while (true);
 
-    if (unpinPage(pool, &nodeHandle) != RC_OK) {
-        PANIC("failed to unpin node page");
-    }
-
     if (parent_out_opt != NULL) {
-        if (parentNode != NULL) {
-            *parent_out_opt = parentNode->header.pageNum;
-            if (unpinPage(pool, &parentNodeHandle) != RC_OK) {
-                PANIC("failed to unpin parent node page");
-            }
+        if (nodePageNum == rootPageNum) {
+            parent_out_opt->page = rootPageNum;
+            parent_out_opt->slot = 0;
         }
         else {
-            *parent_out_opt = rootPageNum;
+            *parent_out_opt = parentRid;
         }
     }
 
@@ -1506,7 +1529,6 @@ IM_getEntryIndexByPredicate(
     uint16_t slotNum = 0;
     for (; slotNum < maxSlots; slotNum++) {
         // get position of tuple
-        size_t slot = slotNum * sizeof(RM_PageSlotPtr);
         RM_PageTuple *markTup = RM_Page_getTuple(page, slotNum, NULL);
 
         // read in entry data
@@ -1559,9 +1581,301 @@ IM_getEntryIndex(
             &numSlots);
 
     if (slotId_out_opt != NULL) {
-        *slotId_out_opt = numSlots;
+        *slotId_out_opt = slotId;
     }
 
     return slotId < numSlots;
 }
 
+RC IM_findEntry_i32(
+        BM_BufferPool *pool,
+        IM_IndexMetadata *indexMeta,
+        int32_t keyValue,
+        RID *entryValue_out_opt,
+        RID *entryIndex_out_opt,
+        RID *parentPageNum_out_opt)
+{
+    RC rc;
+    const uint16_t maxEntriesPerNode = indexMeta->maxEntriesPerNode;
+    RM_PageNumber leafPageNum = IM_getLeafNode(
+            pool,
+            indexMeta->rootNodePageNum,
+            keyValue,
+            maxEntriesPerNode,
+            parentPageNum_out_opt,
+            NULL);
+
+    BM_PageHandle leafPageHandle;
+    TRY_OR_RETURN(pinPage(pool, &leafPageHandle, leafPageNum));
+    RM_Page *leafPage = (RM_Page *) leafPageHandle.buffer;
+
+    RM_PageSlotId entrySlotId;
+    IM_ENTRY_FORMAT_T entry;
+    bool found = IM_getEntryIndex(
+            keyValue,
+            leafPage,
+            maxEntriesPerNode,
+            &entry,
+            &entrySlotId);
+
+    if (!found) {
+        rc = RC_IM_KEY_NOT_FOUND;
+        goto finally;
+    }
+
+    if (entryIndex_out_opt != NULL) {
+        entryIndex_out_opt->page = leafPageNum;
+        entryIndex_out_opt->slot = entrySlotId;
+    }
+
+    if (entryValue_out_opt != NULL) {
+        entryValue_out_opt->page = BF_AS_U16(entry.idxEntryRidPageNum);
+        entryValue_out_opt->slot = BF_AS_U16(entry.idxEntryRidSlot);
+    }
+
+    rc = RC_OK;
+
+finally:
+    TRY_OR_RETURN(unpinPage(pool, &leafPageHandle));
+    return rc;
+}
+
+RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
+{
+    PANIC_IF_NULL(idxId);
+
+    BM_PageHandle systemPageHandle;
+    IM_DESCRIPTOR_FORMAT_T indexData;
+    RM_PageTuple *indexTup;
+    TRY_OR_RETURN(IM_findIndex(
+            pool,
+            idxId,
+            &systemPageHandle,
+            &indexTup,
+            &indexData));
+    RM_Page *systemPage = (RM_Page *) systemPageHandle.buffer;
+
+    IM_IndexMetadata indexMeta;
+    IM_IndexMetadata_makeFromMessage(&indexMeta, &indexData);
+    RM_PageNumber rootPageNum = indexMeta.rootNodePageNum;
+
+    // We can delete the index descriptor tuple now since we already have the
+    // data loaded
+    RM_Page_deleteTuple(systemPage, indexTup->slotId);
+
+    // Allocate a stack to push parent nodes when we need to traverse it's
+    // children
+    uint32_t stackCapacity = 16;
+    uint32_t stackLen = 0;
+    IM_GetNumNodes_Elem *stack = calloc(stackCapacity, sizeof(*stack));
+
+    RM_PageNumber curPageNum = rootPageNum;
+    BM_PageHandle curPageHandle;
+    RM_PageSlotId nextSlotId = 0;
+    do {
+        TRY_OR_RETURN(pinPage(pool, &curPageHandle, curPageNum));
+        RM_Page *curPage = (RM_Page *) curPageHandle.buffer;
+
+        bool isCurPageRoot = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT);
+        bool isCurPageLeaf = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
+
+        if (isCurPageRoot && isCurPageLeaf) {
+            // The index consists of only the root page
+            RM_Page_free(curPage);
+            break;
+        }
+
+        if (isCurPageLeaf) {
+            PANIC("expected inner node but got leaf node");
+        }
+
+        // Current node is an inner node
+        //
+        // Determine if this inner node has other inner node children
+        // or if it only has leaf nodes as children, since if it's only
+        // leaf nodes, we can just use the `numTuples`
+
+        RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
+        IM_ENTRY_FORMAT_T entry;
+        IM_readEntry_i32(tup, &entry, sizeof(entry));
+
+        RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
+        BM_PageHandle slotPageHandle;
+        TRY_OR_RETURN(pinPage(pool, &slotPageHandle, slotPageNum));
+        RM_Page *slotPage = (RM_Page *) slotPageHandle.buffer;
+
+        if (slotPage->header.kind != RM_PAGE_KIND_INDEX) {
+            PANIC("expected page referenced by slot of non-leaf node "
+                  "to be an index page");
+        }
+
+        if (IS_FLAG_SET(slotPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
+            // The rest of the slots are leaf nodes, delete each of them
+            // one by one
+            
+            // Delete the current slot page
+            RM_Page_free(slotPage);
+            TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+            nextSlotId++;
+
+            // Delete the rest of the slot pages
+            uint16_t numTuples = curPage->header.numTuples;
+            for (; nextSlotId < numTuples; nextSlotId++) {
+                RM_PageTuple *leafNodeTup = RM_Page_getTuple(curPage, nextSlotId, NULL);
+                IM_ENTRY_FORMAT_T leafNodeEntry;
+                IM_readEntry_i32(leafNodeTup, &leafNodeEntry, sizeof(leafNodeEntry));
+
+                RM_PageNumber leafNodePageNum = BF_AS_U16(leafNodeEntry.idxEntryRidPageNum);
+                RM_Page_freeAt(pool, leafNodePageNum);
+            }
+
+            // Delete this inner node
+            RM_Page_free(curPage);
+
+            // Attempt to pop the parent to read the rest of the parent inner slots
+            bool finished = false;
+            if (stackLen > 0) {
+                struct IM_GetNumNodes_Elem *el = &stack[stackLen - 1];
+                curPageNum = el->pageNum;
+                nextSlotId = el->nextSlotId;
+                stackLen--;
+            } else {
+                finished = true;
+            }
+
+            TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+            if (finished) {
+                break;
+            }
+
+            continue;
+        }
+
+        // If the first slot is not a leaf, then this inner node must have inner
+        // node children. We need to traverse through each slot then.
+        //
+        // Push the current node to be the parent node and increment the next
+        // slot id.
+        if (stackLen == stackCapacity) {
+            stackCapacity = stackCapacity << 1u;
+            stack = realloc(stack, stackCapacity);
+        }
+        stack[stackLen].pageNum = curPageNum;
+        stack[stackLen].nextSlotId = nextSlotId + 1;
+        stackLen++;
+
+        // Traverse the first inner node
+        curPageNum = slotPageNum;
+        nextSlotId = 0;
+        TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+
+    } while (true);
+
+    return RC_OK;
+}
+
+RC IM_getNumNodes(
+        BM_BufferPool *pool,
+        IM_IndexMetadata *indexMeta,
+        int *result_out)
+{
+    PANIC_IF_NULL(pool);
+    PANIC_IF_NULL(indexMeta);
+    PANIC_IF_NULL(result_out);
+
+    RM_PageNumber rootPageNum = indexMeta->rootNodePageNum;
+
+    // Allocate a stack to push parent nodes when we need to traverse it's
+    // children
+    uint32_t stackCapacity = 16;
+    uint32_t stackLen = 0;
+    struct IM_GetNumNodes_Elem *stack = calloc(stackCapacity, sizeof(*stack));
+
+    int numNodes = 1;
+
+    RM_PageNumber curPageNum = rootPageNum;
+    BM_PageHandle curPageHandle;
+    RM_PageSlotId nextSlotId = 0;
+    do {
+        TRY_OR_RETURN(pinPage(pool, &curPageHandle, curPageNum));
+        RM_Page *curPage = (RM_Page *) curPageHandle.buffer;
+
+        bool isCurPageRoot = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT);
+        bool isCurPageLeaf = IS_FLAG_SET(curPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF);
+
+        if (isCurPageRoot && isCurPageLeaf) {
+            // There is only one node
+            break;
+        }
+
+        if (isCurPageLeaf) {
+            PANIC("expected inner node but got leaf node");
+        }
+
+        // Current node is an inner node
+        //
+        // Determine if this inner node has other inner node children
+        // or if it only has leaf nodes as children, since if it's only
+        // leaf nodes, we can just use the `numTuples`
+
+        RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
+        IM_ENTRY_FORMAT_T entry;
+        IM_readEntry_i32(tup, &entry, sizeof(entry));
+
+        RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
+        BM_PageHandle slotPageHandle;
+        TRY_OR_RETURN(pinPage(pool, &slotPageHandle, slotPageNum));
+        RM_Page *slotPage = (RM_Page *) slotPageHandle.buffer;
+
+        if (slotPage->header.kind != RM_PAGE_KIND_INDEX) {
+            PANIC("expected page referenced by slot of non-leaf node "
+                  "to be an index page");
+        }
+
+        if (IS_FLAG_SET(slotPage->header.flags, RM_PAGE_FLAGS_INDEX_LEAF)) {
+            // The rest of the slots should be leaf nodes, therefore we can
+            // just count the slots on this inner node
+            // Add +1 for the nextPage pointer
+            numNodes += curPage->header.numTuples + 1;
+
+            // Attempt to pop the parent to read the rest of the parent inner slots
+            bool finished = false;
+            if (stackLen > 0) {
+                struct IM_GetNumNodes_Elem *el = &stack[stackLen - 1];
+                curPageNum = el->pageNum;
+                nextSlotId = el->nextSlotId;
+            } else {
+                finished = true;
+            }
+
+            TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+            if (finished) {
+                break;
+            }
+
+            continue;
+        }
+
+        // If the first slot is not a leaf, then this inner node must have inner
+        // node children. We need to traverse through each slot then.
+        //
+        // Push the current node to be the parent node and increment the next
+        // slot id.
+        if (stackLen == stackCapacity) {
+            stackCapacity = stackCapacity << 1u;
+            stack = realloc(stack, stackCapacity);
+        }
+        stack[stackLen].pageNum = curPageNum;
+        stack[stackLen].nextSlotId = nextSlotId + 1;
+        stackLen++;
+
+        // Traverse the first inner node
+        curPageNum = slotPageNum;
+        nextSlotId = 0;
+        TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+
+    } while (true);
+
+    *result_out = numNodes;
+    return RC_OK;
+}

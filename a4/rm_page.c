@@ -5,9 +5,10 @@
 #include "dberror.h"
 #include "rm_page.h"
 #include "rm_macros.h"
+#include "buffer_mgr.h"
 
 void
-RM_page_deleteAllTuples(RM_Page *self) {
+RM_Page_deleteAllTuples(RM_Page *self) {
     // Clear storage
     memset(&self->dataBegin, 0, RM_PAGE_DATA_SIZE);
 
@@ -31,8 +32,27 @@ RM_Page_init(void *buffer, RM_PageNumber pageNumber, RM_PageKind kind) {
     self->header.kind = kind;
     self->header.nextPageNum = RM_PAGE_NEXT_PAGENUM_UNSET;
     // another page
-    RM_page_deleteAllTuples(self);
+    RM_Page_deleteAllTuples(self);
     return self;
+}
+
+RM_Page *
+RM_Page_free(RM_Page *page)
+{
+    return RM_Page_init(page, page->header.pageNum, RM_PAGE_KIND_FREE);
+}
+
+RC
+RM_Page_freeAt(BM_BufferPool *pool, RM_PageNumber pageNumber)
+{
+    BM_PageHandle pageHandle;
+    TRY_OR_RETURN(pinPage(pool, &pageHandle, pageNumber));
+    RM_Page *page = (RM_Page *) pageHandle.buffer;
+    RM_Page_free(page);
+
+    TRY_OR_RETURN(forcePage(pool, &pageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &pageHandle));
+    return RC_OK;
 }
 
 RM_PageTuple *
@@ -86,7 +106,7 @@ RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len) {
 }
 
 RM_PageTuple *
-RM_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
+RM_Page_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
 {
     const uint16_t initialNumEntries = page->header.numTuples;
 
@@ -116,7 +136,50 @@ RM_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
         *targetSlot = targetTupOffset;
         targetTup->slotId = targetTupOffset / sizeof(RM_PageSlotPtr);
     }
+
     return targetTup;
+}
+
+void
+RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
+{
+    PANIC_IF_NULL(page);
+
+    const uint16_t initialNumEntries = page->header.numTuples;
+    const uint16_t lastSlotId = initialNumEntries - 1;
+    if (initialNumEntries == 0 || slotNum > lastSlotId) {
+        PANIC("'slotNum' out of bounds");
+    }
+
+    RM_PageSlotPtr *targetSlotPtr;
+    RM_PageTuple *targetTup = RM_Page_getTuple(page, slotNum, &targetSlotPtr);
+
+    // Determine how we need to fix-up the tuple pointers:
+    //  * if we need to delete at index < lastSlotId,
+    //    then move all the slot ptrs after the delete point to the left by one
+    //
+    //  * if we need to delete at the end,
+    //    then just remove that tuple
+    RM_PageSlotPtr *firstSlot = (RM_PageSlotPtr *) &page->dataBegin;
+    if (slotNum != lastSlotId) {
+        // Shift over all the pointers at and after the insertion index by one slot ptr
+        RM_PageSlotPtr *beginSlot = firstSlot + slotNum + 1;
+        RM_PageSlotPtr *endSlot = firstSlot + initialNumEntries;
+        void *dest = (void *) ((RM_PageSlotPtr *) beginSlot - 1);
+
+        if (beginSlot > endSlot) { PANIC("bad pointer locations"); }
+        size_t slotsLen = (char *) endSlot - (char *) beginSlot;
+        memmove(dest, beginSlot, slotsLen);
+    }
+    
+    // Delete the last item, which was either the target itself or now junk
+    // from shifting the slot pointers over
+    RM_PageSlotPtr *lastSlotPtr = firstSlot + lastSlotId;
+    memset(lastSlotPtr, 0x0, sizeof(RM_PageSlotPtr));
+
+    // Fix-up the page pointers
+    page->header.freespaceLowerOffset -= sizeof(RM_PageSlotPtr);
+    page->header.numTuples--;
 }
 
 RM_PageTuple *
