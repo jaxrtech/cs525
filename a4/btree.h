@@ -32,6 +32,25 @@ typedef uint8_t IM_InsertSplitMode;
 #define IM_INSERTSPLITMODE_REUSE_LEFT_ALLOC_RIGHT (1)
 #define IM_INSERTSPLITMODE_ALLOC_LEFT_RIGHT (2)
 
+
+typedef uint8_t IM_GetEntryOp;
+#define IM_GETENTRY_OP_COUNT (5)
+#define IM_GETENTRY_OP_EQ (0)
+#define IM_GETENTRY_OP_LT (1)
+#define IM_GETENTRY_OP_GT (2)
+#define IM_GETENTRY_OP_GE (3)
+#define IM_GETENTRY_OP_LE (4)
+
+typedef int32_t (*IM_GetEntryOpFn)(int32_t, int32_t);
+#define IM_GETENTRY_OP_DECL(IDENT, OP) \
+    int32_t IM_GETENTRY_OP_##IDENT##_FN(int32_t a, int32_t b) { return a OP b; }
+
+#define IM_GETENTRY_OP_LOOKUP(IDENT) \
+    [IM_GETENTRY_OP_##IDENT] = IM_GETENTRY_OP_##IDENT##_FN
+
+RID IM_makeRidFromEntry(
+        IM_ENTRY_FORMAT_T *entry);
+
 void
 IM_IndexMetadata_makeFromMessage(
         IM_IndexMetadata *meta,
@@ -123,3 +142,12 @@ RC IM_readEntryValueAt(
         BM_BufferPool *pool,
         RID entryIndex,
         RID *entryValue_out);
+
+uint16_t
+IM_getEntryIndexByPredicate(
+        int32_t keyValue,
+        RM_Page *page,
+        IM_GetEntryOp op,
+        uint16_t maxEntriesPerNode,
+        IM_ENTRY_FORMAT_T *entry_out_opt,
+        uint16_t *numSlots_out_opt);

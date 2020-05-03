@@ -23,6 +23,18 @@ void IM_IndexMetadata_makeFromMessage(
     meta->maxEntriesPerNode = BF_AS_U16(indexMsg->idxMaxEntriesPerNode);
 }
 
+RID IM_makeRidFromEntry(
+        IM_ENTRY_FORMAT_T *entry)
+{
+    PANIC_IF_NULL(entry);
+
+    RID rid;
+    rid.page = BF_AS_U16(entry->idxEntryRidPageNum);
+    rid.slot = BF_AS_U16(entry->idxEntryRidSlot);
+
+    return rid;
+}
+
 void IM_NodeTrace_append(IM_NodeTrace *self, RID val)
 {
     if (self->entryLen == self->entryCapacity) {
@@ -257,6 +269,11 @@ RC IM_insertSplit_byAllocLeftRight(
     RM_PageHeader *pageHeader = &oldPage->header;
     const uint16_t initialNumEntries = pageHeader->numTuples;
 
+    // Recalculate the physical size of the entry
+    RM_PageSlotLength entryPhysSize = BF_recomputePhysicalSize(
+            (BF_MessageElement *) entry,
+            BF_NUM_ELEMENTS(entryDescriptorSize));
+
     // Determine the index at which the entry would normally be inserted
     uint16_t targetSlotIdx = IM_getEntryInsertionIndex(keyValue, oldPage, maxEntriesPerNode);
 
@@ -298,7 +315,7 @@ RC IM_insertSplit_byAllocLeftRight(
     }
 
     // Fill the left until it's "full"
-    uint16_t oldPageShift = 0; // use when we pass the insertion point, to offset items
+    int16_t oldPageShift = 0; // use when we pass the insertion point, to offset items
     uint16_t i;
     for (i = 0; i < numLeftFill; i++) {
         if (i != targetSlotIdx) {
@@ -313,19 +330,13 @@ RC IM_insertSplit_byAllocLeftRight(
             memcpy(&newTup->dataBegin, &oldTup->dataBegin, len);
         }
         else {
-            // This is where the node we're inserting will go
-            // Increment the page shift by one
-            oldPageShift++;
-
-            RM_PageSlotLength len = entryDescriptorSize;
-            RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(leftPage, len);
+            // We are not writing a tuple from the old node
+            // Decrement the page shift
+            oldPageShift--;
 
             // Write out new entry
-            uint16_t wrote = BF_write(
-                    (BF_MessageElement *) &entry,
-                    &newTup->dataBegin,
-                    BF_NUM_ELEMENTS(entryDescriptorSize));
-            if (wrote > len) { PANIC("buffer overflow"); }
+            RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(leftPage, entryPhysSize);
+            IM_writeEntry_i32(newTup, entry);
         }
     }
 
@@ -346,20 +357,11 @@ RC IM_insertSplit_byAllocLeftRight(
         else {
             // This is where the node we're inserting will go
             // Increment the page shift by one
-            oldPageShift++;
-
-            RM_PageSlotLength len = BF_recomputePhysicalSize(
-                    (BF_MessageElement *) entry,
-                    BF_NUM_ELEMENTS(entryDescriptorSize));
-
-            RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(rightPage, len);
+            oldPageShift--;
 
             // Write out new entry
-            uint16_t wrote = BF_write(
-                    (BF_MessageElement *) entry,
-                    &newTup->dataBegin,
-                    BF_NUM_ELEMENTS(entryDescriptorSize));
-            if (wrote > len) { PANIC("buffer overflow"); }
+            RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(rightPage, entryPhysSize);
+            IM_writeEntry_i32(newTup, entry);
         }
     }
 
@@ -1079,7 +1081,7 @@ RC IM_insertLinkKey_i32(
     uint16_t parentNumTuples = parentPage->header.numTuples;
     if (parentNumTuples < maxEntriesPerNode)
     {
-        // Parent has enough space to add link to the right leaf node
+        // Parent has enough space to add link to the left leaf node
         uint16_t slotId = IM_getEntryInsertionIndex(linkEntryKey, parentPage, maxEntriesPerNode);
         if (slotId < parentNumTuples) {
             // Insert the link at the current location as a tuple
@@ -1145,6 +1147,11 @@ RC IM_insertKey_i32(
 {
     PANIC_IF_NULL(pool);
     PANIC_IF_NULL(indexMeta);
+    fprintf(stderr, "%s: insert @%d -> [%d.%d]\n",
+            __FUNCTION__ ,
+            keyValue,
+            rid.page,
+            rid.slot);
 
     RC rc;
 
@@ -1426,7 +1433,13 @@ IM_getLeafNode(
         //
         // Find the index that is less than or equal to the search key
         //
-        uint16_t slotId = IM_getEntryInsertionIndex(searchKey, node, maxEntriesPerNode);
+        uint16_t slotId = IM_getEntryIndexByPredicate(
+                searchKey,
+                node,
+                IM_GETENTRY_OP_LT,
+                maxEntriesPerNode,
+                NULL,
+                NULL);
 
         // If tracing is enabled, append to the list
         parentRid.page = nodePageNum;
@@ -1498,21 +1511,6 @@ IM_getLeafNode(
     return nodePageNum;
 }
 
-typedef uint8_t IM_GetEntryOp;
-#define IM_GETENTRY_OP_COUNT (5)
-#define IM_GETENTRY_OP_EQ (0)
-#define IM_GETENTRY_OP_LT (1)
-#define IM_GETENTRY_OP_GT (2)
-#define IM_GETENTRY_OP_GE (3)
-#define IM_GETENTRY_OP_LE (4)
-
-typedef int32_t (*IM_GetEntryOpFn)(int32_t, int32_t);
-#define IM_GETENTRY_OP_DECL(IDENT, OP) \
-    int32_t IM_GETENTRY_OP_##IDENT##_FN(int32_t a, int32_t b) { return a OP b; }
-
-#define IM_GETENTRY_OP_LOOKUP(IDENT) \
-    [IM_GETENTRY_OP_##IDENT] = IM_GETENTRY_OP_##IDENT##_FN
-
 static IM_GETENTRY_OP_DECL(EQ, ==)
 static IM_GETENTRY_OP_DECL(LT, <)
 static IM_GETENTRY_OP_DECL(LE, <=)
@@ -1526,6 +1524,13 @@ IM_GetEntryOpFn IM_GETENTRY_OP_FN_LOOKUP[IM_GETENTRY_OP_COUNT] = {
         IM_GETENTRY_OP_LOOKUP(GT),
         IM_GETENTRY_OP_LOOKUP(GE),
 };
+
+#define IM_GETENTRY_STR(OP) \
+    ((IM_GETENTRY_OP_EQ == (OP)) ? "slot == Q" : \
+     (IM_GETENTRY_OP_LT == (OP)) ? "slot < Q"  : \
+     (IM_GETENTRY_OP_GT == (OP)) ? "slot > Q"  : \
+     (IM_GETENTRY_OP_GE == (OP)) ? "slot >= Q" : \
+     (IM_GETENTRY_OP_LE == (OP)) ? "slot <= Q" : "error")
 
 uint16_t
 IM_getEntryIndexByPredicate(
@@ -1558,13 +1563,16 @@ IM_getEntryIndexByPredicate(
         // stop if predicate matches
         int32_t markKey = BF_AS_I32(markEntry.idxEntryKey);
         IM_GetEntryOpFn fn = IM_GETENTRY_OP_FN_LOOKUP[op];
-        if (fn(markKey, keyValue)) {
+        if (fn(keyValue, markKey)) {
             if (entry_out_opt != NULL) {
                 *entry_out_opt = markEntry;
             }
             break;
         }
     }
+
+    fprintf(stderr, "%s: page num = %d, q = %d, op = %s | @ result idx = %d\n",
+            __FUNCTION__, page->header.pageNum, keyValue, IM_GETENTRY_STR(op), slotNum);
 
     return slotNum;
 }
@@ -1578,7 +1586,7 @@ IM_getEntryInsertionIndex(
     return IM_getEntryIndexByPredicate(
             keyValue,
             page,
-            IM_GETENTRY_OP_GT,
+            IM_GETENTRY_OP_LT,
             maxEntriesPerNode,
             NULL,
             NULL);

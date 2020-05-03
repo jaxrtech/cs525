@@ -31,8 +31,8 @@ main (void)
   testName = "";
 
   destroyPageFile("storage.db");
-//  testInsertAndFind();
-//  testDelete();
+  testInsertAndFind();
+  testDelete();
   testIndexScan();
 
   return 0;
@@ -201,10 +201,10 @@ testIndexScan (void)
     {2,3},
     {1,2},
     {3,5},
-    {4,4},
-    {3,2}, 
+//    {4,4},
+//    {3,2},
   };
-  int numInserts = 6;
+  int numInserts = 4;
   Value **keys;
   char *stringKeys[] = {
     "i1",
@@ -239,7 +239,7 @@ testIndexScan (void)
 
       // insert keys
       for(i = 0; i < numInserts; i++)
-	TEST_CHECK(insertKey(tree, keys[permute[i]], insert[permute[i]]));
+	    TEST_CHECK(insertKey(tree, keys[permute[i]], insert[permute[i]]));
 
       // check index stats
       TEST_CHECK(getNumEntries(tree, &testint));

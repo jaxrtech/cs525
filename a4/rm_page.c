@@ -56,7 +56,14 @@ RM_Page_freeAt(BM_BufferPool *pool, RM_PageNumber pageNumber)
 }
 
 RM_PageTuple *
-RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len) {
+RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len)
+{
+    fprintf(stderr, "%s: page = %d, num tups = %d -> %d\n",
+            __FUNCTION__,
+            self->header.pageNum,
+            self->header.numTuples,
+            self->header.numTuples + 1);
+
     if (len > RM_PAGE_DATA_SIZE) {
         PANIC("`len` was greater than `RM_PAGE_DATA_SIZE`");
     }
@@ -124,8 +131,8 @@ RM_Page_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
     if (slotNum != initialNumEntries) {
         // Shift over all the pointers at and after the insertion index by one slot ptr
         RM_PageSlotPtr *targetSlot = ((RM_PageSlotPtr *) &page->dataBegin) + slotNum;
-        RM_PageSlotPtr *beginSlot = ((RM_PageSlotPtr *) targetSlot) + 1;
-        RM_PageSlotPtr *endSlot = ((RM_PageSlotPtr *) &page->dataBegin) + targetTup->slotId + 1;
+        RM_PageSlotPtr *beginSlot = targetSlot;
+        RM_PageSlotPtr *endSlot = ((RM_PageSlotPtr *) &page->dataBegin) + initialNumEntries;
         void *dest = (void *) ((RM_PageSlotPtr *) beginSlot + 1);
 
         if (beginSlot > endSlot) { PANIC("bad pointer locations"); }
@@ -144,6 +151,12 @@ void
 RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
 {
     PANIC_IF_NULL(page);
+    fprintf(stderr, "%s: page num = %d, slot id = %d, num tups %d -> %d\n",
+            __FUNCTION__,
+            page->header.pageNum,
+            slotNum,
+            page->header.numTuples,
+            page->header.numTuples + 1);
 
     const uint16_t initialNumEntries = page->header.numTuples;
     const uint16_t lastSlotId = initialNumEntries - 1;

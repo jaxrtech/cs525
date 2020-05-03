@@ -349,6 +349,9 @@ RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle)
     BT_ScanData *scandata = malloc(sizeof (BT_ScanData));
     scandata->currentNodePageNum = leafPageNum;
     scandata->currentSlotId = 0;
+    scandata->currentPageHandle.pageNum = 0;
+    scandata->currentPageHandle.buffer = NULL;
+    scandata->finished = false;
 
     BT_ScanHandle *h = malloc(sizeof (BT_ScanHandle));
     h->tree = tree;
@@ -359,35 +362,53 @@ RC openTreeScan (BTreeHandle *tree, BT_ScanHandle **handle)
 }
 
 RC nextEntry (BT_ScanHandle *handle, RID *result){
-    //loads current node and stores the RID pointer in result
-    BT_ScanData *sd = handle->mgmtData;
-    int idx = sd->currentSlotId;
-    /* * load current node and current index
-	   * store resultant RID in result
-       * check if idx < fill
-            ** if not, RC_OK
-            ** else, check last ptr in node
-                *** if NULL, RC_IM_NO_MORE_ENTRIES
-                *** else, sd->nodeIdx = 0; curren node = last ptr of prev node.
-    */
-
-    BT_ScanData *scandata = (BT_ScanData *) handle->mgmtData;
+    PANIC_IF_NULL(handle);
+    PANIC_IF_NULL(result);
 
     BM_BufferPool *pool = g_instance->recordManager->bufferPool;
-    RID entryIndex = {.page = scandata->currentNodePageNum, .slot = scandata->currentSlotId};
+    BT_ScanData *scandata = (BT_ScanData *) handle->mgmtData;
 
-    RID entryResult;
-    IM_readEntryValueAt(pool, entryIndex, &entryResult);
-
-    *result = entryResult;
-    scandata->currentSlotId++;
-
-    uint16_t numTuples;
-    TRY_OR_RETURN(RM_Page_getNumTuplesAt(pool, scandata->currentNodePageNum, &numTuples));
-    if (scandata->currentSlotId >= numTuples) {
-        // TODO
-        NOT_IMPLEMENTED();
+    if (scandata->currentPageHandle.buffer == NULL) {
+        TRY_OR_RETURN(pinPage(
+                pool,
+                &scandata->currentPageHandle,
+                scandata->currentNodePageNum));
     }
+
+    RM_Page *currentPage = (RM_Page *) scandata->currentPageHandle.buffer;
+    uint16_t numTuples = currentPage->header.numTuples;
+    if (scandata->currentSlotId >= numTuples) {
+        // Free current page. Setup new page num but wait for the next iteration
+        // to open it
+        TRY_OR_RETURN(unpinPage(pool, &scandata->currentPageHandle));
+
+        int nextPageNumQ = currentPage->header.nextPageNum;
+        if (nextPageNumQ == RM_PAGE_NEXT_PAGENUM_UNSET) {
+            return RC_IM_NO_MORE_ENTRIES;
+        }
+
+        if (nextPageNumQ < 0) { PANIC("expected next page num to be otherwise assigned"); }
+
+        uint16_t nextPageActual = nextPageNumQ;
+        scandata->currentNodePageNum = nextPageActual;
+        scandata->currentSlotId = 0;
+        scandata->currentPageHandle.buffer = NULL;
+        scandata->currentPageHandle.pageNum = 0;
+
+        TRY_OR_RETURN(pinPage(
+                pool,
+                &scandata->currentPageHandle,
+                scandata->currentNodePageNum));
+
+        currentPage = (RM_Page *) scandata->currentPageHandle.buffer;
+    }
+
+    RM_PageTuple *tup = RM_Page_getTuple(currentPage, scandata->currentSlotId, NULL);
+    IM_ENTRY_FORMAT_T entry;
+    IM_readEntry_i32(tup, &entry);
+
+    *result = IM_makeRidFromEntry(&entry);
+    scandata->currentSlotId++;
 
     return RC_OK;
 }

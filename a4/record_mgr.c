@@ -54,7 +54,6 @@ static RC RM_writeSchemaPage(BM_BufferPool *pool)
 
 RC initRecordManager (void *mgmtData IGNORE_UNUSED)
 {
-    
     RC rc;
     if (g_instance != NULL) {
         return RC_OK;
