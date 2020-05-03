@@ -46,6 +46,12 @@ void IM_NodeTrace_append(IM_NodeTrace *self, RID val)
     self->entryLen++;
 }
 
+void IM_NodeTrace_free(IM_NodeTrace *self)
+{
+    free(self->entryArr);
+    free(self);
+}
+
 // called by record manager -- do not mark as `static`
 RC IM_writeIndexPage(BM_BufferPool *pool)
 {
@@ -111,8 +117,7 @@ RC IM_readEntryAt_i32(BM_BufferPool *pool, RID rid, IM_ENTRY_FORMAT_T *entry_out
     RM_PageTuple *tup = RM_Page_getTuple(page, rid.slot, NULL);
     IM_readEntry_i32(tup, entry_out);
 
-    fprintf(stderr, "%s: [%d.%d] -> | key = %d, ptr = [%d.%d]\n",
-            __FUNCTION__,
+    LOG_DEBUG("[%d.%d] -> | key = %d, ptr = [%d.%d]",
             rid.page,
             rid.slot,
             BF_AS_I32(entry_out->idxEntryKey),
@@ -151,8 +156,7 @@ RC IM_writeEntryAt_i32(
         IM_ENTRY_FORMAT_T *entry_out)
 {
     PANIC_IF_NULL(entry_out);
-    fprintf(stderr, "%s: [%d.%d] <- | key = %d, ptr = [%d.%d] |\n",
-            __FUNCTION__,
+    LOG_DEBUG("[%d.%d] <- | key = %d, ptr = [%d.%d] |",
             rid.page,
             rid.slot,
             BF_AS_I32(entry_out->idxEntryKey),
@@ -1162,8 +1166,7 @@ RC IM_insertKey_i32(
 {
     PANIC_IF_NULL(pool);
     PANIC_IF_NULL(indexMeta);
-    fprintf(stderr, "%s: insert | key = %d, ptr = [%d.%d] |\n",
-            __FUNCTION__ ,
+    LOG_DEBUG( "insert | key = %d, ptr = [%d.%d] |",
             keyValue,
             rid.page,
             rid.slot);
@@ -1390,6 +1393,7 @@ RC IM_insertKey_i32(
     PANIC("should never be reached");
 
 finally:
+    IM_NodeTrace_free(parents);
     TRY_OR_RETURN(forcePage(pool, &leafNodePageHandle));
     TRY_OR_RETURN(unpinPage(pool, &leafNodePageHandle));
     return rc;
@@ -1586,8 +1590,8 @@ IM_getEntryIndexByPredicate(
         }
     }
 
-    fprintf(stderr, "%s: page num = %d, q = %d, op = %s | @ result idx = %d\n",
-            __FUNCTION__, page->header.pageNum, keyValue, IM_GETENTRY_STR(op), slotNum);
+    LOG_DEBUG("page num = %d, q = %d, op = %s | @ result idx = %d",
+            page->header.pageNum, keyValue, IM_GETENTRY_STR(op), slotNum);
 
     return slotNum;
 }
@@ -1693,9 +1697,7 @@ RC IM_deleteKey_i32(
     PANIC_IF_NULL(indexMeta);
     RC rc;
 
-    fprintf(stderr, "%s: Q = %d\n",
-            __FUNCTION__,
-            keyValue);
+    LOG_DEBUG("key = %d", keyValue);
 
     RID leafEntryRid;
     RID parentLinkRid;
@@ -1707,8 +1709,7 @@ RC IM_deleteKey_i32(
             &leafEntryRid,
             &parentLinkRid));
 
-    fprintf(stderr, "%s: Q = %d, page num = %d, slot id = %d\n",
-            __FUNCTION__,
+    LOG_DEBUG("key = %d, page num = %d, slot id = %d",
             keyValue,
             leafEntryRid.page,
             leafEntryRid.slot);
@@ -1783,7 +1784,7 @@ RC IM_deleteKey_i32(
             RM_Page_getNumTuplesAt(pool, leftSiblingPageNum, &leftSiblingNumTuples);
             
             if (leftSiblingNumTuples > 1) {
-                fprintf(stderr, "%s: borrow from left sibling\n", __FUNCTION__);
+                LOG_DEBUG("borrow from left sibling");
 
                 // We have enough in the left sibling to borrow
                 // Delete the tuple we're trying to remove
@@ -1844,7 +1845,7 @@ RC IM_deleteKey_i32(
             RM_Page_getNumTuplesAt(pool, rightSiblingPageNum, &rightSiblingNumTuples);
 
             if (rightSiblingNumTuples > 1) {
-                fprintf(stderr, "%s: borrow from right sibling\n", __FUNCTION__);
+                LOG_DEBUG("borrow from right sibling");
 
                 // We have enough in the left sibling to borrow
                 // Delete the tuple we're trying to remove
@@ -1906,8 +1907,45 @@ RC IM_deleteKey_i32(
             }
         }
 
-        // Merge node
-        NOT_IMPLEMENTED();
+        //
+        // No siblings with extra entries, we have to actually remove the node
+        //
+
+        if (parentLinkRid.slot >= parentNumTuples) {
+            // If the node is linked to from the end pointer, then we need to
+            // remove the previous sibling link and move that pointer to the end
+
+            // Get pointer from previous sibling
+            IM_ENTRY_FORMAT_T leftSiblingLinkEntry;
+            RID leftSiblingEntryRid = {
+                    .page = parentLinkRid.page,
+                    .slot = parentLastSlotId,
+            };
+            IM_readEntryAt_i32(pool, leftSiblingEntryRid, &leftSiblingLinkEntry);
+
+            // Remove previous sibling link
+            RM_Page_deleteTupleAtIndex(parentPage, parentLastSlotId);
+
+            // Link back to that node
+            parentPage->header.nextPageNum = BF_AS_U16(leftSiblingLinkEntry.idxEntryRidPageNum);
+        }
+        else { // parentLinkRid.slot < parentNumTuples
+
+            // If the node is linked via slot, simply delete it, shifting the
+            // rest over to the left
+            RM_Page_deleteTupleAtIndex(parentPage, parentLinkRid.slot);
+        }
+
+        // Free page
+        RM_Page_free(leafPage);
+
+        // If the parent node underflowed, we have to perform a merge
+        if (parentPage->header.numTuples == 0) {
+            NOT_IMPLEMENTED();
+        }
+
+        rc = RC_OK;
+        goto finally;
     }
 
     // Delete pointer, handling fixing-up the slot pointers
@@ -2080,6 +2118,7 @@ RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
 
     } while (true);
 
+    free(stack);
     return RC_OK;
 }
 
@@ -2184,6 +2223,8 @@ RC IM_getNumNodes(
         TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
 
     } while (true);
+
+    free(stack);
 
     *result_out = numNodes;
     return RC_OK;

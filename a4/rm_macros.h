@@ -36,6 +36,15 @@ panic_fmt(char *fmt, ...)
             __FUNCTION__, \
             ##vargs)
 
+#if LOG_DEBUG_ENABLED
+#define LOG_DEBUG(msg, vargs...) \
+    fprintf(stderr, "[DEBUG] %s: " msg "\n", \
+        __FUNCTION__, \
+        ##vargs)
+#else
+#define LOG_DEBUG(msg, vargs...)
+#endif
+
 #define PANIC_IF_NULL(VAR) \
     do { \
         if ((VAR) == NULL) { PANIC("'%s' cannot be null", #VAR); } \

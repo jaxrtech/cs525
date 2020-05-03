@@ -59,7 +59,7 @@ BM_LinkedListElement *LinkedList_fresh(BM_LinkedList *self) {
     }
     BM_LinkedListElement *el = &self->elementsMetaBuffer[nextIndex];
 
-#if LOG_DEBUG
+#if LOG_DEBUG_ENABLED
     printf("DEBUG: LinkedList_fresh: el@0x%08" PRIxPTR
     " { nextIndex = %d, data = 0x%08" PRIxPTR " }\n",
            (uintptr_t) el, nextIndex, (uintptr_t) el->data);

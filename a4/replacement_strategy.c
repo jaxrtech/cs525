@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include "replacement_strategy.h"
 #include "debug.h"
+#include "rm_macros.h"
 
 typedef struct RS_FIFO_Metadata {
     BM_LinkedListElement *next;
@@ -75,9 +76,7 @@ static BM_LinkedListElement* RS_FIFO_elect(
     }
 
     if (!el) {
-        fprintf(stderr,
-                "RS_FIFO_elect: expected `el` to not be null at this point\n");
-        exit(1);
+        PANIC("expected `el` to not be null at this point");
     }
 
     BM_LinkedListElement *next = el->next;
@@ -87,7 +86,7 @@ static BM_LinkedListElement* RS_FIFO_elect(
     }
     rs->next = next;
 
-#if LOG_DEBUG
+#if LOG_DEBUG_ENABLED
     printf("DEBUG: RS_FIFO_elect: next eviction = idx %d\n",
             next == NULL ? -1 : next->index);
     fflush(stdout);

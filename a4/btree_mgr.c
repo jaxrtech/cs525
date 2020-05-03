@@ -254,21 +254,6 @@ RC getKeyType (BTreeHandle *tree, DataType *result)
 	return RC_OK;
 }
 
-//look for leaf node that MIGHT contain a key
-Node *getLeafNodePtr(BTreeHandle *tree, Value *key){
-    //assume NULL key is to get the min value
-    Node *node;
-    //search tree here
-    NOT_IMPLEMENTED();
-    return node;
-}
-
-RC binarySearchNode(Node *node, Value *key, RID *result){
-    //binary search the keys in a node and store the pointer to the value in result
-    // will return RC_IM_KEY_NOT_FOUND if the node type is a leaf and key is nonexistent
-    NOT_IMPLEMENTED();
-}
-
 // index access
 RC findKey (BTreeHandle *tree, Value *key, RID *result)
 {

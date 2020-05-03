@@ -58,8 +58,7 @@ RM_Page_freeAt(BM_BufferPool *pool, RM_PageNumber pageNumber)
 RM_PageTuple *
 RM_Page_reserveTupleAtEnd(RM_Page *self, uint16_t len)
 {
-    fprintf(stderr, "%s: page = %d, num tups = %d -> %d\n",
-            __FUNCTION__,
+    LOG_DEBUG("page = %d, num tups = %d -> %d",
             self->header.pageNum,
             self->header.numTuples,
             self->header.numTuples + 1);
@@ -151,8 +150,7 @@ void
 RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
 {
     PANIC_IF_NULL(page);
-    fprintf(stderr, "%s: page num = %d, slot id = %d, num tups %d -> %d\n",
-            __FUNCTION__,
+    LOG_DEBUG("page num = %d, slot id = %d, num tups %d -> %d",
             page->header.pageNum,
             slotNum,
             page->header.numTuples,

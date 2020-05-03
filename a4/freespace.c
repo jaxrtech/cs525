@@ -57,7 +57,7 @@ bool Freespace_markNext(FS_Freespace *self, uint32_t *result) {
         }
         bitmap[i] = ~chunkInv | (1u << b);
         *result = blk;
-#if LOG_DEBUG
+#if LOG_DEBUG_ENABLED
         printf("DEBUG: Freespace_markNext: { blk = %d, i = %d, b = %d }\n",
                 blk, i, off);
         fflush(stdout);
@@ -78,7 +78,7 @@ bool Freespace_unmark(FS_Freespace *self, uint32_t elementIndex) {
     uint32_t i = (elementIndex / FS_ELEMENTS_PER_CHUNK);
     uint32_t b = (elementIndex % FS_ELEMENTS_PER_CHUNK);
 
-#if LOG_DEBUG
+#if LOG_DEBUG_ENABLED
     printf("DEBUG: Freespace_unmark: { blk = %d, i = %d, b = %d }\n",
             elementIndex, i, b);
 #endif
