@@ -1441,10 +1441,10 @@ IM_getLeafNode(
                 NULL,
                 NULL);
 
-        // If tracing is enabled, append to the list
         parentRid.page = nodePageNum;
         parentRid.slot = slotId;
 
+        // If tracing is enabled, append to the list
         if (trace != NULL) {
             IM_NodeTrace_append(trace, parentRid);
         }
@@ -1622,7 +1622,7 @@ RC IM_findEntry_i32(
         int32_t keyValue,
         RID *entryValue_out_opt,
         RID *entryIndex_out_opt,
-        RID *parentPageNum_out_opt)
+        RID *parentLinkRid_out_opt)
 {
     RC rc;
     const uint16_t maxEntriesPerNode = indexMeta->maxEntriesPerNode;
@@ -1631,7 +1631,7 @@ RC IM_findEntry_i32(
             indexMeta->rootNodePageNum,
             keyValue,
             maxEntriesPerNode,
-            parentPageNum_out_opt,
+            parentLinkRid_out_opt,
             NULL);
 
     BM_PageHandle leafPageHandle;
@@ -1674,7 +1674,13 @@ RC IM_deleteKey_i32(
         IM_IndexMetadata *indexMeta,
         const int32_t keyValue)
 {
+    PANIC_IF_NULL(pool);
+    PANIC_IF_NULL(indexMeta);
     RC rc;
+
+    fprintf(stderr, "%s: Q = %d\n",
+            __FUNCTION__,
+            keyValue);
 
     RID entryIndexRid;
     RID parentLinkRid;
@@ -1685,6 +1691,12 @@ RC IM_deleteKey_i32(
             NULL,
             &entryIndexRid,
             &parentLinkRid));
+
+    fprintf(stderr, "%s: Q = %d, page num = %d, slot id = %d\n",
+            __FUNCTION__,
+            keyValue,
+            entryIndexRid.page,
+            entryIndexRid.slot);
 
     BM_PageHandle pageHandle;
     TRY_OR_RETURN(pinPage(pool, &pageHandle, entryIndexRid.page));
@@ -1703,6 +1715,7 @@ RC IM_deleteKey_i32(
         PANIC("expected number of leaf tuples to be greater than 0");
     }
 
+    bool shouldDeleteSimple = false;
     if (initialLeafNumTuples == 1) {
         //
         // Handle underflow
@@ -1711,6 +1724,7 @@ RC IM_deleteKey_i32(
         // If we're in the root as a leaf, there is nothing to do
         // Simply remove the entry but leave the node
         if (IS_FLAG_SET(leafPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT)) {
+            shouldDeleteSimple = true;
             goto delete;
         }
 
@@ -1747,6 +1761,8 @@ RC IM_deleteKey_i32(
             RM_Page_getNumTuplesAt(pool, leftSiblingPageNum, &leftSiblingNumTuples);
             
             if (leftSiblingNumTuples > 1) {
+                fprintf(stderr, "%s: borrow from left sibling\n", __FUNCTION__);
+
                 // We have enough in the left sibling to borrow
                 // Delete the tuple we're trying to remove
                 RM_Page_deleteTuple(leafPage, entryIndexRid.slot);
@@ -1761,19 +1777,111 @@ RC IM_deleteKey_i32(
                 int32_t leftSiblingEntryKeyValue = BF_AS_I32(leftSiblingEntry.idxEntryKey);
 
                 // Determine where the correct position for the borrowed tuple
-                /*
-                IM_getEntryInsertionIndex(
+                uint16_t insertIndex = IM_getEntryInsertionIndex(
                         leftSiblingEntryKeyValue,
-                        leftSib
-                        )
-                RM_Page_moveTuple(pool, )
-                */
-                NOT_IMPLEMENTED();
+                        leafPage,
+                        indexMeta->maxEntriesPerNode);
+
+                RID insertRid = {
+                        .page = leafPage->header.pageNum,
+                        .slot = insertIndex};
+                RM_Page_moveTuple(pool, leftSiblingEntryRid, insertRid);
+
+                // Fixup parent link, if we are in a tuple other than the end
+                // pointer (if we're in the right most leaf, there is nothing to
+                // do
+                //
+                // This check looks strange, but the slotId will be +1 the last
+                // valid tuple slot id to indicate that we're the last node
+                if (parentLinkRid.slot < parentNumTuples) {
+                    IM_ENTRY_FORMAT_T parentLinkEntry;
+                    IM_readEntryAt_i32(pool, parentLinkRid, &parentLinkEntry);
+
+                    BF_SET_I32(parentLinkEntry.idxEntryKey) = leftSiblingEntryKeyValue;
+                    IM_writeEntryAt_i32(pool, parentLinkRid, &parentLinkEntry);
+
+                    rc = RC_OK;
+                    goto finally;
+                }
+            }
+        }
+
+        if (hasRightSibling)
+        {
+            //
+            // Does the right sibling have more than one tuple to allow us to
+            // borrow it?
+            //
+
+            uint16_t rightSiblingPageNum = leafPage->header.nextPageNum;
+            if (rightSiblingPageNum <= 0) {
+                PANIC("bad right sibling page num. got page num = %d", rightSiblingPageNum);
+            }
+
+            uint16_t rightSiblingNumTuples;
+            RM_Page_getNumTuplesAt(pool, rightSiblingPageNum, &rightSiblingNumTuples);
+
+            if (rightSiblingNumTuples > 1) {
+                fprintf(stderr, "%s: borrow from right sibling\n", __FUNCTION__);
+
+                // We have enough in the left sibling to borrow
+                // Delete the tuple we're trying to remove
+                RM_Page_deleteTuple(leafPage, entryIndexRid.slot);
+
+                uint16_t rightSiblingBorrowedTupIdx = 0;
+                RID rightSiblingEntryRid = {
+                        .page = rightSiblingPageNum,
+                        .slot = rightSiblingBorrowedTupIdx,
+                };
+                IM_ENTRY_FORMAT_T rightSiblingEntry;
+                IM_readEntryAt_i32(pool, rightSiblingEntryRid, &rightSiblingEntry);
+                int32_t rightSiblingEntryKeyValue = BF_AS_I32(rightSiblingEntry.idxEntryKey);
+
+                // Since we're taking the first element, we need to update
+                // the parent link entry to the entry after the one we're
+                // borrowing
+                //
+                // We can skip this if the right sibling happens to be linked
+                // by the parent's end pointer
+                //
+                uint16_t rightSiblingLinkSlotId = parentLinkRid.slot + 1;
+                if (rightSiblingLinkSlotId < parentNumTuples) {
+                    RID rightSiblingLinkRid = {
+                            .page = parentLinkRid.page,
+                            .slot = rightSiblingLinkSlotId};
+                    IM_ENTRY_FORMAT_T rightSiblingLinkEntry;
+                    IM_readEntryAt_i32(pool, rightSiblingLinkRid, &rightSiblingLinkEntry);
+
+                    RID rightSiblingLinkNextEntryRid = {
+                            .page = rightSiblingPageNum,
+                            .slot = rightSiblingBorrowedTupIdx + 1};
+                    IM_ENTRY_FORMAT_T rightSiblingNextEntry;
+                    IM_readEntryAt_i32(pool, rightSiblingLinkNextEntryRid, &rightSiblingEntry);
+
+                    BF_SET_I32(rightSiblingLinkEntry.idxEntryKey) =
+                          BF_AS_I32(rightSiblingNextEntry.idxEntryKey);
+
+                    IM_writeEntryAt_i32(pool, rightSiblingLinkRid, &rightSiblingLinkEntry);
+                }
+
+                // Determine where the correct position for the borrowed tuple
+                uint16_t insertIndex = IM_getEntryInsertionIndex(
+                        rightSiblingEntryKeyValue,
+                        leafPage,
+                        indexMeta->maxEntriesPerNode);
+
+                RID insertRid = {
+                        .page = leafPage->header.pageNum,
+                        .slot = insertIndex};
+                RM_Page_moveTuple(pool, rightSiblingEntryRid, insertRid);
 
                 rc = RC_OK;
                 goto finally;
             }
         }
+
+        // Merge node
+        NOT_IMPLEMENTED();
     }
 
     // Check if the item that is being removed is the first entry

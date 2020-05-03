@@ -113,7 +113,7 @@ IM_findEntry_i32(
         int32_t keyValue,
         RID *entryValue_out_opt,
         RID *entryIndex_out_opt,
-        RID *parentPageNum_out_opt);
+        RID *parentLinkRid_out_opt);
 
 RC
 IM_writeEntryAt_i32(
