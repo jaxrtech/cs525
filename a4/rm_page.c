@@ -147,14 +147,14 @@ RM_Page_reserveTupleAtIndex(RM_Page *page, uint16_t slotNum, const uint16_t len)
 }
 
 void
-RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
+RM_Page_deleteTuple(RM_Page *page, uint16_t slotNum)
 {
     PANIC_IF_NULL(page);
     LOG_DEBUG("page num = %d, slot id = %d, num tups %d -> %d",
             page->header.pageNum,
             slotNum,
             page->header.numTuples,
-            page->header.numTuples + 1);
+            page->header.numTuples - 1);
 
     const uint16_t initialNumEntries = page->header.numTuples;
     const uint16_t lastSlotId = initialNumEntries - 1;
@@ -163,7 +163,6 @@ RM_Page_deleteTupleAtIndex(RM_Page *page, uint16_t slotNum)
     }
 
     RM_PageSlotPtr *targetSlotPtr;
-    RM_PageTuple *targetTup = RM_Page_getTuple(page, slotNum, &targetSlotPtr);
 
     // Determine how we need to fix-up the tuple pointers:
     //  * if we need to delete at index < lastSlotId,
@@ -274,30 +273,6 @@ RM_Page_setTuple(RM_Page *self, Record *r){
 
     //copy record into tuple
     memcpy(&tup->dataBegin, (void *)r->data, n);
-}
-
-void
-RM_Page_deleteTuple(RM_Page *self, RM_PageSlotId slotId) {
-    //locate tuple
-    size_t slotOffset = slotId * sizeof(RM_PageSlotPtr);
-    RM_PageSlotPtr *off = (RM_PageSlotPtr *) (&self->dataBegin + slotOffset);
-    RM_PageTuple *tup = (RM_PageTuple *) (&self->dataBegin + *off);
-    memset(tup, 0xef, RM_TUP_SIZE(tup->len));           //zero fill tuple
-    memset(off, 0xef, sizeof(RM_PageSlotPtr)); //zero fill slot
-
-    //raise flag in header if deleted one of the middle tups
-    //or raise flag if deleted last tup
-    if (slotOffset < self->header.freespaceLowerOffset - sizeof(RM_PageSlotId)) {
-        self->header.flags |= RM_PAGE_FLAGS_HAS_TRAILING;
-    }
-    else { /* set freespaceTrailingOffset here*/ }
-    //NOT_IMPLEMENTED(); //store free space pointer
-
-    if (slotOffset == self->header.freespaceLowerOffset - sizeof(RM_PageSlotId)) {
-        self->header.freespaceLowerOffset -= sizeof(RM_PageSlotId);
-    }
-
-    self->header.numTuples--;
 }
 
 RC

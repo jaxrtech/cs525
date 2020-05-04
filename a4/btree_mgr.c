@@ -63,6 +63,7 @@ RC shutdownIndexManager()
 	    g_instance = NULL;
 	}
 
+	shutdownRecordManager();
 	return RC_OK;
 }
 
@@ -73,28 +74,27 @@ RC createBtree (char *idxId, DataType keyType, int n)
         PANIC("'idxId' cannot be null. expect a unique index name.");
     }
 
+    RC rc;
+    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
+    BP_Metadata *meta = pool->mgmtData;
+
     uint64_t indexNameLength = strlen(idxId);
     if (indexNameLength > BF_LSTRING_MAX_STRLEN) {
         return RC_RM_NAME_TOO_LONG;
     }
 
-    RC rc;
-
     //check if index with same name already exists
-    BTreeHandle *temp = NULL;
-
-    /*
-    if ((openBtree(&temp, idxId)) == RC_OK){
-        closeBtree(temp);
+    rc = IM_findIndex(pool, idxId, NULL, NULL, NULL);
+    if (rc == RC_OK) {
         return RC_IM_KEY_ALREADY_EXISTS;
     }
-    */
+    else if (rc != RC_IM_KEY_NOT_FOUND) {
+        return rc;
+    }
 
     //
     // Initialize root index node page
     //
-    BM_BufferPool *pool = g_instance->recordManager->bufferPool;
-    BP_Metadata *meta = pool->mgmtData;
     int dataPageNum = meta->fileHandle->totalNumPages;
 
     BM_PageHandle dataPageHandle = {};

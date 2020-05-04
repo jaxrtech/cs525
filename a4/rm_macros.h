@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#include "debug.h"
+
 #ifndef __RM_PANIC_FMT__
 #define __RM_PANIC_FMT__
 __attribute__((noreturn)) static void *

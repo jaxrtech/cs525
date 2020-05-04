@@ -201,10 +201,10 @@ testIndexScan (void)
     {2,3},
     {1,2},
     {3,5},
-//    {4,4},
-//    {3,2},
+    {4,4},
+    {3,2},
   };
-  int numInserts = 4;
+  int numInserts = 6;
   Value **keys;
   char *stringKeys[] = {
     "i1",

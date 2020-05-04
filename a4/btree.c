@@ -697,6 +697,10 @@ RC IM_insertSplitInner_byAllocLeftRight(
             RM_PageSlotLength len = insertEntryDescriptorSize;
             RM_PageTuple *newTup = RM_Page_reserveTupleAtEnd(rightPage, len);
             IM_writeEntry_i32(newTup, insertEntry);
+
+            // Decrement the page shift by one since we didn't read from the
+            // old page
+            oldPageOff--;
         }
         else if (i == targetSlotIdx && i == pulledAbsIdx) {
             // The node that we're trying to insert is also the node that
@@ -1688,6 +1692,27 @@ finally:
     return rc;
 }
 
+RM_PageNumber IM_resolvePageNumFromPseudoSlotId(RM_Page *page, uint16_t slotId)
+{
+    PANIC_IF_NULL(page);
+    uint16_t parentNumTuples = page->header.numTuples;
+
+    uint16_t pageNum;
+    if (slotId < parentNumTuples) {
+        IM_ENTRY_FORMAT_T entry;
+        RM_PageTuple *tup = RM_Page_getTuple(page, slotId, NULL);
+        IM_readEntry_i32(tup, &entry);
+        pageNum = BF_AS_U16(entry.idxEntryRidPageNum);
+    }
+    else {
+        int32_t nextPageNum = page->header.nextPageNum;
+        if (nextPageNum == RM_PAGE_NEXT_PAGENUM_UNSET) { PANIC("missing end pointer"); }
+        pageNum = (uint16_t) nextPageNum;
+    }
+
+    return pageNum;
+}
+
 RC IM_deleteKey_i32(
         BM_BufferPool *pool,
         IM_IndexMetadata *indexMeta,
@@ -1751,7 +1776,7 @@ RC IM_deleteKey_i32(
         // If we're in the root as a leaf, there is nothing to do
         // Simply remove the entry but leave the node
         if (IS_FLAG_SET(leafPage->header.flags, RM_PAGE_FLAGS_INDEX_ROOT)) {
-            RM_Page_deleteTupleAtIndex(leafPage, leafEntryRid.slot);
+            RM_Page_deleteTuple(leafPage, leafEntryRid.slot);
             rc = RC_OK;
             goto finally;
         }
@@ -1828,18 +1853,10 @@ RC IM_deleteKey_i32(
 
             // Resolve the sibling leaf page and determine if there's enough
             // entries
-            RM_PageNumber rightSiblingPageNum;
-
-            if (rightSiblingLinkRid.slot < parentNumTuples) {
-                IM_ENTRY_FORMAT_T rightSiblingLinkEntry;
-                IM_readEntryAt_i32(pool, rightSiblingLinkRid, &rightSiblingLinkEntry);
-                rightSiblingPageNum = BF_AS_U16(rightSiblingLinkEntry.idxEntryRidPageNum);
-            }
-            else {
-                int32_t nextPageNum = parentPage->header.nextPageNum;
-                if (nextPageNum == RM_PAGE_NEXT_PAGENUM_UNSET) { PANIC("missing end pointer"); }
-                rightSiblingPageNum = (uint16_t) nextPageNum;
-            }
+            RM_PageNumber rightSiblingPageNum =
+                    IM_resolvePageNumFromPseudoSlotId(
+                            parentPage,
+                            rightSiblingLinkRid.slot);
 
             uint16_t rightSiblingNumTuples;
             RM_Page_getNumTuplesAt(pool, rightSiblingPageNum, &rightSiblingNumTuples);
@@ -1924,7 +1941,7 @@ RC IM_deleteKey_i32(
             IM_readEntryAt_i32(pool, leftSiblingEntryRid, &leftSiblingLinkEntry);
 
             // Remove previous sibling link
-            RM_Page_deleteTupleAtIndex(parentPage, parentLastSlotId);
+            RM_Page_deleteTuple(parentPage, parentLastSlotId);
 
             // Link back to that node
             parentPage->header.nextPageNum = BF_AS_U16(leftSiblingLinkEntry.idxEntryRidPageNum);
@@ -1933,7 +1950,7 @@ RC IM_deleteKey_i32(
 
             // If the node is linked via slot, simply delete it, shifting the
             // rest over to the left
-            RM_Page_deleteTupleAtIndex(parentPage, parentLinkRid.slot);
+            RM_Page_deleteTuple(parentPage, parentLinkRid.slot);
         }
 
         // Free page
@@ -1949,7 +1966,7 @@ RC IM_deleteKey_i32(
     }
 
     // Delete pointer, handling fixing-up the slot pointers
-    RM_Page_deleteTupleAtIndex(leafPage, leafEntryRid.slot);
+    RM_Page_deleteTuple(leafPage, leafEntryRid.slot);
 
     // Check if the item that is being removed is the first entry
     // If so, we have to update the parent node's entry value to the next
@@ -2042,11 +2059,9 @@ RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
         // or if it only has leaf nodes as children, since if it's only
         // leaf nodes, we can just use the `numTuples`
 
-        RM_PageTuple *tup = RM_Page_getTuple(curPage, nextSlotId, NULL);
-        IM_ENTRY_FORMAT_T entry;
-        IM_readEntry_i32(tup, &entry);
+        RM_PageNumber slotPageNum =
+                IM_resolvePageNumFromPseudoSlotId(curPage, nextSlotId);
 
-        RM_PageNumber slotPageNum = BF_AS_U16(entry.idxEntryRidPageNum);
         BM_PageHandle slotPageHandle;
         TRY_OR_RETURN(pinPage(pool, &slotPageHandle, slotPageNum));
         RM_Page *slotPage = (RM_Page *) slotPageHandle.buffer;
@@ -2103,22 +2118,36 @@ RC IM_deleteIndex(BM_BufferPool *pool, char *idxId)
         //
         // Push the current node to be the parent node and increment the next
         // slot id.
+        bool finished = false;
         if (stackLen == stackCapacity) {
             stackCapacity = stackCapacity << 1u;
             stack = realloc(stack, stackCapacity);
         }
-        stack[stackLen].pageNum = curPageNum;
-        stack[stackLen].nextSlotId = nextSlotId + 1;
-        stackLen++;
+
+        if (nextSlotId < curPage->header.numTuples) {
+            // Only resume if we have a next slot to traverse
+            // Be sure to include the end node pointer at `slot == numTuples`
+            stack[stackLen].pageNum = curPageNum;
+            stack[stackLen].nextSlotId = nextSlotId + 1;
+            stackLen++;
+        }
+        else {
+            finished = true;
+        }
 
         // Traverse the first inner node
         curPageNum = slotPageNum;
         nextSlotId = 0;
         TRY_OR_RETURN(unpinPage(pool, &slotPageHandle));
+        if (finished) {
+            break;
+        }
 
     } while (true);
 
     free(stack);
+    TRY_OR_RETURN(markDirty(pool, &systemPageHandle));
+    TRY_OR_RETURN(unpinPage(pool, &systemPageHandle));
     return RC_OK;
 }
 
